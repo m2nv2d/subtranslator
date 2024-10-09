@@ -1,5 +1,6 @@
 import re
 import json
+from flask import current_app
 
 class SubtitleProcessor:
     def parse_srt(self, file_path):
@@ -20,7 +21,8 @@ class SubtitleProcessor:
         
         return master_json
 
-    def create_chunks(self, master_json, chunk_size=40):
+    def create_chunks(self, master_json):
+        chunk_size = current_app.config['SUBTITLE_CHUNK_SIZE']
         chunks = []
         for i in range(0, len(master_json), chunk_size):
             chunk = [{
@@ -34,13 +36,29 @@ class SubtitleProcessor:
         for chunk in translated_chunks:
             # Parse the JSON string if it's not already a dictionary
             if isinstance(chunk, str):
-                translated_entries = json.loads(chunk)
+                try:
+                    translated_entries = json.loads(chunk)
+                except json.JSONDecodeError:
+                    print(f"Error decoding JSON: {chunk}")
+                    continue
             else:
                 translated_entries = chunk
             
             for entry in translated_entries:
-                index = next(i for i, item in enumerate(master_json) if item["id"] == entry["id"])
-                master_json[index]["translated_content"] = entry["translated_content"]
+                try:
+                    index = next(i for i, item in enumerate(master_json) if item["id"] == entry["id"])
+                    # Check if 'translated_content' exists, otherwise use 'content' or keep original
+                    if "translated_content" in entry:
+                        master_json[index]["translated_content"] = entry["translated_content"]
+                    elif "content" in entry:
+                        master_json[index]["translated_content"] = entry["content"]
+                    else:
+                        print(f"Warning: No translation found for entry {entry['id']}")
+                        master_json[index]["translated_content"] = master_json[index]["original_content"]
+                except StopIteration:
+                    print(f"Warning: No matching ID found for entry {entry['id']}")
+                except KeyError as e:
+                    print(f"KeyError in entry: {entry}. Error: {str(e)}")
         return master_json
 
     def json_to_srt(self, master_json):

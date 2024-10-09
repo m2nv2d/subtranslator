@@ -19,8 +19,11 @@ llm_translator = LLMTranslator()
 def index():
     return render_template('index.html')
 
+def get_rate_limit():
+    return current_app.config['RATE_LIMIT']
+
 @bp.route('/upload', methods=['POST'])
-@limiter.limit("10 per minute")
+@limiter.limit(get_rate_limit)
 async def upload_file():
     try:
         if 'file' not in request.files:
@@ -60,30 +63,28 @@ async def upload_file():
                 return jsonify({'error': 'Rate limit exceeded'}), 429
             
             # Translate
-            translation_successful = True
-            translated_chunks = []
-            for i, chunk in enumerate(json_chunks):
-                try:
-                    translated_chunk = await llm_translator.send_translation_request(chunk, i)
-                    translated_chunks.append(json.loads(translated_chunk))  # Parse JSON string to Python object
-                    
+            tasks = [llm_translator.send_translation_request(chunk, i) for i, chunk in enumerate(json_chunks)]
+            translated_chunks = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            translation_successful = all(not isinstance(chunk, Exception) for chunk in translated_chunks)
+            
+            if translation_successful:
+                # Process and save translated chunks
+                for i, translated_chunk in enumerate(translated_chunks):
                     # Save request and response JSONs
                     request_filename = f"{os.path.splitext(filename)[0]}_request_{i+1}.json"
                     request_path = os.path.join(current_app.config['UPLOAD_FOLDER'], request_filename)
                     with open(request_path, 'w', encoding='utf-8') as f:
-                        f.write(chunk)
+                        f.write(json_chunks[i])
 
                     response_filename = f"{os.path.splitext(filename)[0]}_response_{i+1}.json"
                     response_path = os.path.join(current_app.config['UPLOAD_FOLDER'], response_filename)
                     with open(response_path, 'w', encoding='utf-8') as f:
                         f.write(translated_chunk)
-                except Exception as e:
-                    current_app.logger.error(f"Error translating chunk {i+1}: {str(e)}")
-                    translation_successful = False
-                    break
+                    print(f"Received JSON for chunk {i+1}")
 
-            if translation_successful:
                 # Merge translations
+                translated_chunks = [json.loads(chunk) if isinstance(chunk, str) else chunk for chunk in translated_chunks]
                 translated_master_json = subtitle_processor.merge_translations(master_json, translated_chunks)
                 
                 # Update master JSON file with translations
@@ -103,7 +104,7 @@ async def upload_file():
                     'num_chunks': num_chunks,
                     'total_entries': total_entries,
                     'total_chunks': len(json_chunks),
-                    'num_success': len(translated_chunks),
+                    'num_success': sum(1 for chunk in translated_chunks if not isinstance(chunk, Exception)),
                     'master_json_file': master_json_filename
                 }
                 
@@ -125,3 +126,20 @@ def download_file(file_id):
 def translation_status():
     responses_received, total_chunks = llm_translator.get_translation_status()
     return jsonify({'responses_received': responses_received, 'total_chunks': total_chunks})
+
+@bp.route('/cleanup', methods=['POST'])
+def cleanup_uploads():
+    try:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        for filename in os.listdir(upload_folder):
+            file_path = os.path.join(upload_folder, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    os.rmdir(file_path)
+            except Exception as e:
+                print(f'Failed to delete {file_path}. Reason: {e}')
+        return jsonify({'success': True, 'message': 'All files in the uploads folder have been removed.'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
