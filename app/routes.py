@@ -13,7 +13,9 @@ bp = Blueprint('main', __name__)
 
 subtitle_processor = SubtitleProcessor()
 rate_limiter = RateLimiter()
-llm_translator = LLMTranslator()
+
+# Remove the global llm_translator instance
+# llm_translator = LLMTranslator()
 
 @bp.route('/')
 def index():
@@ -26,6 +28,9 @@ def get_rate_limit():
 @limiter.limit(get_rate_limit)
 async def upload_file():
     try:
+        # Create LLMTranslator instance within the request context
+        llm_translator = LLMTranslator()
+        
         if 'file' not in request.files:
             return jsonify({'error': 'No file part'}), 400
         file = request.files['file']
@@ -124,6 +129,8 @@ def download_file(file_id):
 
 @bp.route('/translation_status')
 def translation_status():
+    # Create LLMTranslator instance within the request context
+    llm_translator = LLMTranslator()
     responses_received, total_chunks = llm_translator.get_translation_status()
     return jsonify({'responses_received': responses_received, 'total_chunks': total_chunks})
 
