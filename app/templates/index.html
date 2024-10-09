@@ -18,9 +18,28 @@
             font-family: 'Comic Neue', cursive;
         }
 
+        body {
+            background: linear-gradient(to bottom right, #ff00ff, #00ffff);
+        }
+
         .meme-border {
-            border: 3px solid #000;
-            box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000;
+            border: 3px solid #ff0000;
+            box-shadow: 0 0 0 3px #ffff00, 0 0 0 6px #ff00ff;
+        }
+
+        .nineties-button {
+            background: linear-gradient(to bottom, #ff00ff, #ff0000);
+            color: #ffff00;
+            text-shadow: 2px 2px #000000;
+        }
+
+        .nineties-button:hover {
+            background: linear-gradient(to bottom, #ff0000, #ff00ff);
+        }
+
+        .nineties-input {
+            background-color: #00ffff;
+            border: 2px solid #ff00ff;
         }
     </style>
 </head>
@@ -31,37 +50,39 @@
             <img src="{{ url_for('static', filename='header.png') }}" alt="Ramsay!!!" class="mx-auto mb-4"
                 style="max-width: 340px;">
         </div>
-        <h1 class="text-5xl font-bold mb-12 text-center">
+        <h1 class="text-5xl font-bold mb-12 text-center text-yellow-300" style="text-shadow: 3px 3px #ff00ff;">
             <i class="fas fa-language mr-4"></i>Subtitle Translator
         </h1>
-        <div class="max-w-xl mx-auto rounded-xl shadow-lg p-6 animate__animated animate__fadeInUp meme-border">
+        <div
+            class="max-w-xl mx-auto rounded-xl shadow-lg p-6 animate__animated animate__fadeInUp meme-border bg-white bg-opacity-75">
             <form id="upload-form" class="space-y-4">
                 <div class="relative">
                     <input type="file" class="hidden" id="file" accept=".srt" required>
-                    <div class="mt-1 flex justify-center px-4 pt-4 pb-4 border-2 border-dashed rounded-md cursor-pointer transition duration-300"
+                    <div class="mt-1 flex justify-center px-4 pt-4 pb-4 border-2 border-dashed rounded-md cursor-pointer transition duration-300 nineties-input"
                         onclick="document.getElementById('file').click();">
                         <div class="space-y-1 text-center">
-                            <i class="fas fa-cloud-upload-alt text-4xl"></i>
-                            <p class="text-sm">Drop your .srt here (max 0.5 MB)</p>
+                            <i class="fas fa-cloud-upload-alt text-4xl text-purple-600"></i>
+                            <p class="text-sm text-purple-600">Drop your .srt here (max 0.5 MB)</p>
                         </div>
                     </div>
-                    <p id="file-name" class="mt-2 text-sm text-center"></p>
+                    <p id="file-name" class="mt-2 text-sm text-center text-purple-600"></p>
                 </div>
                 <button type="submit"
-                    class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium transition duration-300">
+                    class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium transition duration-300 nineties-button">
                     <i class="fas fa-magic mr-2"></i>Translate
                 </button>
             </form>
         </div>
         <div id="download-link" class="mt-6 text-center hidden animate__animated animate__fadeIn">
             <a href="#"
-                class="inline-flex items-center px-6 py-3 border border-transparent text-lg font-medium rounded-md shadow-sm transition duration-300">
+                class="inline-flex items-center px-6 py-3 border border-transparent text-lg font-medium rounded-md shadow-sm transition duration-300 nineties-button">
                 <i class="fas fa-download mr-2"></i>Download Translated Subtitle
             </a>
         </div>
-        <div id="debug-info" class="mt-6 rounded-xl shadow-lg p-4 hidden animate__animated animate__fadeIn meme-border">
-            <h3 class="text-lg font-semibold mb-3">Debug Info</h3>
-            <ul class="space-y-2">
+        <div id="debug-info"
+            class="mt-6 rounded-xl shadow-lg p-4 hidden animate__animated animate__fadeIn meme-border bg-white bg-opacity-75">
+            <h3 class="text-lg font-semibold mb-3 text-purple-600">Debug Info</h3>
+            <ul class="space-y-2 text-purple-600">
                 <li><i class="fas fa-cubes mr-2"></i>Meme chunks: <span id="num-chunks" class="font-bold"></span></li>
                 <li><i class="fas fa-list-ol mr-2"></i>Total entries: <span id="total-entries" class="font-bold"></span>
                 </li>
