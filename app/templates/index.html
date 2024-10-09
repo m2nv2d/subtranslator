@@ -10,7 +10,11 @@
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body {
+        body,
+        button,
+        input,
+        select,
+        textarea {
             font-family: 'Comic Neue', cursive;
         }
 
@@ -25,7 +29,7 @@
     <div class="container mx-auto px-4 py-12">
         <div class="text-center mb-8">
             <img src="{{ url_for('static', filename='header.png') }}" alt="Ramsay!!!" class="mx-auto mb-4"
-                style="max-width: 300px;">
+                style="max-width: 340px;">
         </div>
         <h1 class="text-5xl font-bold mb-12 text-center">
             <i class="fas fa-language mr-4"></i>Subtitle Translator
