@@ -3,14 +3,19 @@ document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('upload-form');
     const fileInput = document.getElementById('file');
     const fileName = document.getElementById('file-name');
-    const statusElement = document.getElementById('translation-status');
+    const submitButton = form.querySelector('button[type="submit"]');
     const downloadLink = document.getElementById('download-link');
     const debugInfo = document.getElementById('debug-info');
-    const progressBar = document.getElementById('progress-bar');
 
     fileInput.addEventListener('change', function (e) {
         if (this.files && this.files[0]) {
-            fileName.textContent = this.files[0].name;
+            if (this.files[0].name.toLowerCase().endsWith('.srt')) {
+                fileName.textContent = this.files[0].name;
+            } else {
+                alert('Please select a .srt file.');
+                this.value = ''; // Clear the file input
+                fileName.textContent = '';
+            }
         }
     });
 
@@ -26,7 +31,8 @@ document.addEventListener('DOMContentLoaded', function () {
         formData.append('file', fileInput.files[0]);
 
         isTranslating = true;
-        statusElement.classList.remove('hidden');
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+        submitButton.disabled = true;
         downloadLink.classList.add('hidden');
         debugInfo.classList.add('hidden');
 
@@ -36,6 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             isTranslating = false;
+            submitButton.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Translate';
+            submitButton.disabled = false;
             downloadLink.classList.remove('hidden');
             downloadLink.querySelector('a').href = '/download/' + response.data.file_id;
 
@@ -47,39 +55,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         } catch (error) {
             isTranslating = false;
+            submitButton.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Translate';
+            submitButton.disabled = false;
             alert('An error occurred: ' + (error.response?.data?.error || error.message));
         }
     });
-
-    async function pollTranslationStatus() {
-        if (!isTranslating) {
-            return;
-        }
-
-        try {
-            const response = await axios.get('/translation_status');
-            const { responses_received, total_chunks } = response.data;
-            document.getElementById('responses-received').textContent = responses_received;
-            document.getElementById('total-chunks').textContent = total_chunks;
-
-            const progress = (responses_received / total_chunks) * 100;
-            progressBar.style.width = `${progress}%`;
-
-            if (responses_received < total_chunks && isTranslating) {
-                setTimeout(pollTranslationStatus, 1000);  // Poll every second
-            } else if (responses_received === total_chunks) {
-                statusElement.classList.add('animate__fadeOut');
-                setTimeout(() => {
-                    statusElement.classList.add('hidden');
-                    statusElement.classList.remove('animate__fadeOut');
-                }, 1000);
-            }
-        } catch (error) {
-            console.log('Error fetching translation status:', error);
-            isTranslating = false;
-        }
-    }
-
-    // Start polling when translation begins
-    form.addEventListener('submit', pollTranslationStatus);
 });

@@ -23,27 +23,16 @@
                         onclick="document.getElementById('file').click();">
                         <div class="space-y-1 text-center">
                             <i class="fas fa-cloud-upload-alt text-5xl text-gray-400"></i>
-                            <p class="text-xs text-gray-500">SRT up to 10MB</p>
+                            <p class="text-xs text-gray-500">Click to upload .srt file (up to 0.5MB)</p>
                         </div>
                     </div>
-                    <p id="file-name" class="mt-2 text-sm text-gray-500"></p>
+                    <p id="file-name" class="mt-2 text-sm text-gray-500 text-center"></p>
                 </div>
                 <button type="submit"
                     class="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-300">
                     <i class="fas fa-sync-alt mr-2"></i>Translate
                 </button>
             </form>
-        </div>
-        <div id="translation-status" class="mt-8 text-center hidden animate__animated animate__fadeIn">
-            <h2 class="text-2xl font-semibold mb-4 text-indigo-700">Translation Progress</h2>
-            <p class="text-lg mb-2">
-                Status: <span id="responses-received" class="font-bold">0</span> / <span id="total-chunks"
-                    class="font-bold">0</span> chunks processed
-            </p>
-            <div class="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
-                <div id="progress-bar" class="h-full bg-indigo-600 rounded-full transition-all duration-500 ease-out"
-                    style="width: 0%"></div>
-            </div>
         </div>
         <div id="download-link" class="mt-8 text-center hidden animate__animated animate__fadeIn">
             <a href="#"
