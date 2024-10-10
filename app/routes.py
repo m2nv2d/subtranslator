@@ -68,10 +68,9 @@ async def upload_file():
                 return jsonify({'error': 'Rate limit exceeded'}), 429
             
             # Translate
-            tasks = [llm_translator.send_translation_request(chunk, i) for i, chunk in enumerate(json_chunks)]
-            translated_chunks = await asyncio.gather(*tasks, return_exceptions=True)
+            translated_chunks, total_chunks, num_success = await llm_translator.translate_text(json_chunks)
             
-            translation_successful = all(not isinstance(chunk, Exception) for chunk in translated_chunks)
+            translation_successful = num_success == total_chunks
             
             if translation_successful:
                 # Process and save translated chunks
@@ -108,8 +107,8 @@ async def upload_file():
                 debug_info = {
                     'num_chunks': num_chunks,
                     'total_entries': total_entries,
-                    'total_chunks': len(json_chunks),
-                    'num_success': sum(1 for chunk in translated_chunks if not isinstance(chunk, Exception)),
+                    'total_chunks': total_chunks,
+                    'num_success': num_success,
                     'master_json_file': master_json_filename
                 }
                 
