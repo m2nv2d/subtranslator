@@ -10,7 +10,6 @@ env/
 **/.venv
 
 # temp folders
-test/
 uploads/
 
 # IDE-specific files
