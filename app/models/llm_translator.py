@@ -60,65 +60,81 @@ class LLMTranslator:
         
         translated_chunks = []
         num_success = 0
+        errors = []
         
-        for result in results:
+        for i, result in enumerate(results):
             if isinstance(result, Exception):
+                errors.append(f"Chunk {i+1}: {str(result)}")
                 translated_chunks.append(json.dumps([{"id": -1, "translated_content": "Translation failed"}]))
             else:
                 translated_chunks.append(result)
                 num_success += 1
         
+        if errors:
+            error_message = "Translation errors occurred: " + "; ".join(errors)
+            raise ValueError(error_message)
+        
         return translated_chunks, self.total_chunks, num_success
 
     async def send_translation_request(self, json_chunk, chunk_index):
-        data = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": json.dumps(json_chunk)}
-            ],
-            "top_p": self.top_p,
-            "temperature": self.temp,
-            "provider": {
-                "order": [
-                    "Google",
-                    "Google AI Studio"
-                ]
-            },
-        }
-        
-        for attempt in range(3):
-            try:
-                print(f"Sending request for chunk {chunk_index + 1}")
-                if current_app.config['DRY_RUN']:
-                    print(f"Dry run: Request that would be sent for chunk {chunk_index + 1}:")
-                    print(f"URL: {self.url}")
-                    print(f"Headers: {self.headers}")
-                    print(f"JSON payload: {json.dumps(data)}")
-                    response_text = '[]'  # Simulate empty response
-                else:
-                    response = await asyncio.to_thread(
-                        requests.post,
-                        self.url,
-                        headers=self.headers,
-                        data=json.dumps(data)
-                    )
-
-                    response_text = response.json()['choices'][0]['message']['content']
-                # Ensure the response is valid JSON
+        try:
+            data = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": json.dumps(json_chunk)}
+                ],
+                "top_p": self.top_p,
+                "temperature": self.temp,
+                "provider": {
+                    "order": [
+                        "Google",
+                        "Google AI Studio"
+                    ]
+                },
+            }
+            
+            for attempt in range(3):
                 try:
-                    json.loads(response_text)
+                    print(f"Sending request for chunk {chunk_index + 1}")
+                    if current_app.config['DRY_RUN']:
+                        print(f"Dry run: Request that would be sent for chunk {chunk_index + 1}:")
+                        print(f"URL: {self.url}")
+                        print(f"Headers: {self.headers}")
+                        print(f"JSON payload: {json.dumps(data)}")
+                        response_text = '[]'  # Simulate empty response
+                    else:
+                        response = await asyncio.to_thread(
+                            requests.post,
+                            self.url,
+                            headers=self.headers,
+                            data=json.dumps(data)
+                        )
+
+                        response_text = response.json()['choices'][0]['message']['content']
+                    # Ensure the response is valid JSON
+                    try:
+                        json.loads(response_text)
+                    except json.JSONDecodeError:
+                        print(f"Invalid JSON response for chunk {chunk_index + 1}: {response_text}")
+                        raise ValueError("Invalid JSON response from LLM")
+                    
+                    self.responses_received += 1
+                    return response_text
+                except requests.exceptions.RequestException as e:
+                    print(f"Network error in translation attempt for chunk {chunk_index + 1}: {str(e)}")
+                    raise
                 except json.JSONDecodeError:
-                    print(f"Invalid JSON response for chunk {chunk_index + 1}: {response_text}")
+                    print(f"Invalid JSON response for chunk {chunk_index + 1}")
                     raise ValueError("Invalid JSON response from LLM")
-                
-                self.responses_received += 1
-                return response_text
-            except Exception as e:
-                print(f"Error in translation attempt {attempt + 1} for chunk {chunk_index + 1}: {str(e)}")
-                if attempt == 2:
-                    raise e
-                await asyncio.sleep(3 * (2 ** attempt))
+                except Exception as e:
+                    print(f"Error in translation attempt {attempt + 1} for chunk {chunk_index + 1}: {str(e)}")
+                    if attempt == 2:
+                        raise e
+                    await asyncio.sleep(3 * (2 ** attempt))
+        except Exception as e:
+            print(f"Error in translation attempt for chunk {chunk_index + 1}: {str(e)}")
+            raise
 
     def get_translation_status(self):
         return self.responses_received, self.total_chunks
