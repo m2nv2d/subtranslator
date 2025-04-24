@@ -8,4 +8,6 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "srt>=3.5.3",
     "werkzeug>=3.0.0",
+    "tenacity>=8.2.3",
+    "google-genai",
 ]

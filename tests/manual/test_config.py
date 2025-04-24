@@ -3,10 +3,9 @@ import sys
 from pathlib import Path
 import logging
 
-# Add project root to sys.path to allow 'from src import ...'
-# tests/manual/test_config.py -> tests/manual -> tests -> project_root
-project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(project_root))
+# Add project root to sys.path
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
 
 # Configure logging for the test script itself if needed
 # logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s') # Optional: uncomment if script-specific logging needed

@@ -1,13 +1,12 @@
 import argparse
-import pathlib
+from pathlib import Path
 import sys
 import os
 
 # Add project root to sys.path
-project_root = pathlib.Path(__file__).resolve().parents[2]
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
-from werkzeug.datastructures import FileStorage
 from src.parser import parse_srt
 from src.exceptions import ValidationError, ParsingError
 
@@ -27,18 +26,9 @@ def main():
         sys.exit(1)
 
     try:
-        # Simulate FileStorage object by opening the file in binary read mode
-        with open(srt_file_path, 'rb') as f:
-            # FileStorage needs the stream, filename, and optionally content_type
-            file_storage = FileStorage(
-                stream=f,
-                filename=os.path.basename(srt_file_path),
-                content_type='application/x-subrip' # Common MIME type for SRT
-            )
-
-            print(f"Parsing '{srt_file_path}' with max_blocks={max_blocks_per_chunk}...")
-            # Call the parser function from the src module
-            chunks = parse_srt(file_storage, max_blocks_per_chunk)
+        print(f"Parsing '{srt_file_path}' with max_blocks={max_blocks_per_chunk}...")
+        # Call the parser function directly with the file path
+        chunks = parse_srt(srt_file_path, max_blocks_per_chunk)
 
         print(f"\nSuccessfully parsed. Number of chunks created: {len(chunks)}")
 
