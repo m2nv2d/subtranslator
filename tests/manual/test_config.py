@@ -8,7 +8,7 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 # Configure logging for the test script itself if needed
-# logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s') # Optional: uncomment if script-specific logging needed
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s') # Optional: uncomment if script-specific logging needed
 
 print(f"Project root added to sys.path: {project_root}")
 print("Attempting to import from src...")

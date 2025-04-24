@@ -39,7 +39,6 @@ def detect_context(
         ContextDetectionError: If context detection fails.
         ValueError: If speed_mode is invalid or genai_client is missing when required.
     """
-    logger.info(f"Starting context detection in '{speed_mode}' mode.")
 
     if speed_mode == "mock":
         logger.debug("Using mock context detection.")

@@ -15,7 +15,7 @@ from src.parser import parse_srt
 from src.gemini_helper import init_genai_client
 
 # Basic logging setup for the script
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def main():

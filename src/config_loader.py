@@ -6,11 +6,7 @@ from typing import List
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Use relative import as models.py is in the same package (src)
 from .models import Config
-
-# Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_config() -> Config:
     """
