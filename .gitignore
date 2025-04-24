@@ -13,6 +13,7 @@ wheels/
 
 # AI
 .roo
+.windsurfrules
 
 # Tests
 tests/srt
