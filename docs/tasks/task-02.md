@@ -1,61 +1,62 @@
-# Task 2: SRT File Parsing & Chunking
+# Task 2: Configuration Loading
 
 ## Project Context
 
-This task involves creating a Python module responsible for handling uploaded subtitle files in the SRT format. The primary goal is to validate the uploaded file, parse its content into a structured format, and then divide this structured content into manageable chunks for later processing. This module acts as the entry point for subtitle data into the system.
+This task involves creating the core data structures (models) used throughout the application and implementing a module responsible for loading application configuration settings from an environment file. The goal is to define how data is represented, centralize configuration management, provide default values for optional settings, and ensure essential settings like API keys are present at startup. These components will be used by other parts of the application.
 
 ## Prerequisites
 
-*   You will need to ensure the `srt` library is installed in the project's environment (it's typically imported as `import srt`).
-*   You will interact with file uploads, likely represented by a `FileStorage` object from the Werkzeug library (commonly used by Flask). You should import this type if needed.
-*   You will need custom data structures and exceptions defined elsewhere in the project. Specifically:
-    *   The `SubtitleBlock` data class definition can be found in `src/models.py`. Check that file for the exact fields (`index`, `start`, `end`, `content`, `translated_content`).
-    *   Custom exception classes `ValidationError` and `ParsingError` can be found in `src/exceptions.py`. Check that file for their definitions. You should import and raise these exceptions as required.
+*   You will need the `python-dotenv` library installed in your environment to handle reading `.env` files.
+*   The project structure includes a `src` directory for source code.
+*   A `.env` file is expected to exist in the project's root directory (one level above `src`).
 
-## Implementation within `src/parser.py`
+### Subtask 0: Create Data Models File (`src/models.py`)
 
-### Define Core Data Structure (in `src/models.py`)
+Create the file `src/models.py`. Inside this file, define the data structures needed by the application using Python's `dataclasses` (or standard classes if preferred, but dataclasses are suitable). You will need standard library imports like `datetime` from `datetime`, `Optional` and `List` from `typing`. Define the following classes:
 
-Before implementing the parser itself, ensure the necessary data structure exists. Navigate to the `src/models.py` file. Define a data class (or a standard class) named `SubtitleBlock`. This class will represent a single entry in an SRT file. It must contain the following fields with their specified types:
+*   **`SubtitleBlock`**: Represents a single subtitle entry. It should have attributes for:
+    *   `index` (integer)
+    *   `start` (datetime object)
+    *   `end` (datetime object)
+    *   `content` (string)
+    *   `translated_content` (optional string, initially None)
+*   **`Config`**: Represents the application's configuration settings. It should have attributes for:
+    *   `gemini_api_key` (string)
+    *   `target_languages` (list of strings, e.g., `["Vietnamese", "French"]`)
+    *   `chunk_max_blocks` (integer)
+    *   `retry_max_attempts` (integer)
+    *   `log_level` (string)
 
-*   `index`: `int`
-*   `start`: `datetime` (from the `datetime` module)
-*   `end`: `datetime` (from the `datetime` module)
-*   `content`: `str`
-*   `translated_content`: `Optional[str]` (from the `typing` module), which should default to `None`.
+### Subtask 1: Implement `load_config` Function
 
-Make sure to include necessary imports (`from datetime import datetime`, `from typing import Optional, List`).
+Create a function named `load_config` within `src/config_loader.py`. This function takes no arguments and is expected to return an instance of the `Config` data class (defined in `src/models.py`), populated with values loaded from the environment or defaults. Make sure your function signature correctly indicates the return type by importing `Config` from `src.models`.
 
-### Define the Parsing Function
+### Subtask 2: Read Environment Variables
 
-Create a function named `parse_srt` within the `src/parser.py` file. This function should accept two arguments:
+Inside `load_config`, use the `python-dotenv` library to load variables from the `.env` file located in the project root directory into the environment.
 
-1.  `file`: A `FileStorage` object representing the uploaded file.
-2.  `max_blocks`: An integer specifying the maximum number of subtitle blocks allowed per chunk.
+### Subtask 3: Handle Mandatory Variable (`GEMINI_API_KEY`)
 
-The function should return a list of lists, where each inner list contains `SubtitleBlock` objects (`List[List[SubtitleBlock]]`).
+Retrieve the `GEMINI_API_KEY` environment variable. This variable is mandatory. If it is not found or is empty, log an informative error message indicating the missing key and cause the application to exit (e.g., raise a `SystemExit` or `RuntimeError`).
 
-### Input File Validation
+### Subtask 4: Handle Optional Variables with Defaults
 
-Before attempting to parse, the `parse_srt` function must validate the input `file`.
+Retrieve the following optional environment variables. If any are missing, use the specified default value:
+*   `TARGET_LANGUAGES`: Expects a string of comma-separated full language names (e.g., `"Vietnamese,French"`). Parse this string into a `List[str]`. Default value if missing: `"Vietnamese,French"` (which should be parsed to `["Vietnamese", "French"]`).
+*   `CHUNK_MAX_BLOCKS`: Expects an integer. Default value if missing: `100`.
+*   `RETRY_MAX_ATTEMPTS`: Expects an integer. Default value if missing: `6`.
+*   `LOG_LEVEL`: Expects a string. Default value if missing: `"INFO"`.
+Ensure you handle potential type conversion errors if the environment variables are present but have incorrect formats (though basic handling is sufficient).
 
-*   Check if the file extension is `.srt`. If not, raise a `ValidationError`.
-*   Check if the file's content length (accessible via an attribute like `content_length` on the `FileStorage` object) is greater than 2,000,000 bytes (2MB). If it exceeds this limit, raise a `ValidationError`.
+### Subtask 5: Populate and Return `Config` Object
 
-### SRT Content Parsing
+Instantiate the `Config` data class (imported from `src.models`) using the values obtained in the previous steps (mandatory API key, optional variables or their defaults). Return this populated `Config` instance from the `load_config` function.
 
-If validation passes, read the content of the `file`. Use the `srt` library's parsing capabilities (e.g., a function like `srt.parse()`) to convert the raw SRT text content into a sequence of subtitle objects provided by the library. Handle potential errors during this parsing process (e.g., malformed SRT content) by raising a `ParsingError`.
+### Subtask 6: Create Debug Script
 
-### Data Structure Mapping
-
-Iterate through the parsed subtitle objects obtained from the `srt` library. For each original subtitle object, create an instance of the `SubtitleBlock` data class (defined in `src/models.py`). Map the relevant information (index, start time, end time, content text) from the library's object to the corresponding fields in your `SubtitleBlock` instance. Ensure the `translated_content` field is initially set to `None`. Store these `SubtitleBlock` instances in a single list.
-
-### Chunking Logic
-
-Take the complete list of `SubtitleBlock` objects created in the previous step. Divide this list into smaller, disjoint lists (chunks). Each chunk should contain at most `max_blocks` `SubtitleBlock` objects. The function should return these chunks as a list of lists. For example, if `max_blocks` is 100 and you have 250 blocks, the result should be `[[100 blocks], [100 blocks], [50 blocks]]`.
-
-## Manual Debugging Script
-
-Create a simple Python script located at `tests/manual/test_parser.py`. This script should use the above parser to process a srt file (the sole argument of the script) and print out the number of chunks as well as content of first few blocks in the first chunk.
-
-You should be able to run this script from the project root, like `uv run tests/manual/test_parser.py path/to/your/test.srt`.
+Create a simple Python script located at `tests/manual/test_config.py`. This script should:
+1.  Import the `load_config` function from `src.config_loader`.
+2.  Import the `Config` class from `src.models`.
+3.  Call `load_config()` to get the configuration object.
+4.  Print the resulting `Config` object to the console.
+This script will help manually verify that the configuration is loaded correctly from a sample `.env` file.

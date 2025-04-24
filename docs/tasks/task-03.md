@@ -1,47 +1,61 @@
-# Task 3: Context Detection Logic
+# Task 3: SRT File Parsing & Chunking
 
 ## Project Context
 
-This task involves creating a Python module responsible for analyzing the initial content of a subtitle file to determine its general context or topic. This module is part of a larger Flask web application designed to translate subtitle files (`.srt` format). The detected context might be used later in the translation process to improve accuracy. The application parses the SRT file into chunks of subtitle blocks before processing.
-
-You will need to interact with data structures and configurations defined elsewhere in the project.
+This task involves creating a Python module responsible for handling uploaded subtitle files in the SRT format. The primary goal is to validate the uploaded file, parse its content into a structured format, and then divide this structured content into manageable chunks for later processing. This module acts as the entry point for subtitle data into the system.
 
 ## Prerequisites
 
-Before starting, familiarize yourself with the following components. Check the current files in the `src/` directory for the most up-to-date definitions, as they might have evolved:
+*   You will need to ensure the `srt` library is installed in the project's environment (it's typically imported as `import srt`).
+*   You will interact with file uploads, likely represented by a `FileStorage` object from the Werkzeug library (commonly used by Flask). You should import this type if needed.
+*   You will need custom data structures and exceptions defined elsewhere in the project. Specifically:
+    *   The `SubtitleBlock` data class definition can be found in `src/models.py`. Check that file for the exact fields (`index`, `start`, `end`, `content`, `translated_content`).
+    *   Custom exception classes `ValidationError` and `ParsingError` can be found in `src/exceptions.py`. Check that file for their definitions. You should import and raise these exceptions as required.
 
-1.  **Data Models (`src/models.py`):** Understand the structure of `SubtitleBlock` (containing `index`, `start`, `end`, `content`, `translated_content`) and `Config` (containing `gemini_api_key`, `target_languages`, `chunk_max_blocks`, `retry_max_attempts`, `log_level`).
-2.  **Custom Exceptions (`src/exceptions.py`):** Be aware of the custom exception classes defined here, particularly `ContextDetectionError`.
-3.  **External Libraries:** You will need `tenacity` for implementing retry logic and `google-genai` for interacting with the Gemini API (specifically the `genai.client.Client` type, although you won't implement the API call itself yet). Ensure these are listed as dependencies for the project.
+## Implementation within `src/parser.py`
 
-### Subtask 1: Implement `detect_context` Function
+### Define Core Data Structure (in `src/models.py`)
 
-*   **Location:** `src/context_detector.py`
-*   **Goal:** Create the main function that orchestrates context detection.
-*   **Requirements:**
-    *   Define a function with the following signature:
-        `detect_context(sub: List[List[SubtitleBlock]], speed_mode: str, genai_client: genai.client.Client, config: models.Config) -> str`
-        *   `sub`: A list where each element is a list (chunk) of `SubtitleBlock` objects, representing the parsed SRT file.
-        *   `speed_mode`: A string indicating the desired processing mode. Expected values are `"mock"`, `"fast"`, or `"normal"`.
-        *   `genai_client`: An initialized instance of the Gemini client (from `google-genai` SDK. Remember, it's not the old `google-generativeai` package). This is required if `speed_mode` is not `"mock"`.
-        *   `config`: An instance of the `Config` data class containing application settings.
-        *   Returns: A string representing the detected context.
-    *   Implement the logic based on `speed_mode`:
-        *   **If `speed_mode` is `"mock"`:** Implement this fully. The function should immediately return a hardcoded context string (e.g., `"General conversation"`, `"Technical discussion"`, or similar). It should *not* attempt any external API calls or complex processing.
-        *   **If `speed_mode` is `"fast"` or `"normal"`:** Implement the scaffolding for this logic.
-            *   Indicate that this path requires the `genai_client`.
-            *   Extract the text content from the `SubtitleBlock` objects within the *first chunk* (`sub[0]`), combining roughly the first 100 lines of dialogue.
-            *   Set up retry logic using the `tenacity` library decorator around the section intended for the API call. Configure the retries using `config.retry_max_attempts`. The specific retry conditions (e.g., which exceptions to retry on) can be general for now, anticipating potential API errors.
-            *   **Crucially, do *not* implement the actual Gemini API call.** Leave clear comments or placeholder code indicating where the prompt would be constructed, where the `genai_client` method (like `generate_content`) would be called, and where the response would be parsed.
-            *   Ensure that if the process (including retries) were to fail, it would raise a `ContextDetectionError` (imported from `src/exceptions.py`). For now, you might add a placeholder `raise ContextDetectionError("API call not implemented")` within the non-mock path after the text extraction step.
+Before implementing the parser itself, ensure the necessary data structure exists. Navigate to the `src/models.py` file. Define a data class (or a standard class) named `SubtitleBlock`. This class will represent a single entry in an SRT file. It must contain the following fields with their specified types:
 
-### Subtask 2: Create Debug Script
+*   `index`: `int`
+*   `start`: `datetime` (from the `datetime` module)
+*   `end`: `datetime` (from the `datetime` module)
+*   `content`: `str`
+*   `translated_content`: `Optional[str]` (from the `typing` module), which should default to `None`.
 
-*   **Location:** `tests/manual/test_context_detector.py`
-*   **Goal:** Create a simple command-line script to manually test the `detect_context` function, primarily for the implemented `"mock"` mode.
-*   **Requirements:**
-    *   The script should accept two command-line arguments: the path to an SRT file and the `speed_mode` string (`"mock"`, `"fast"`, or `"normal"`)
-    *   Load the application configuration by calling the `load_config` function (check its location, likely `src/config_loader.py`).
-    *   Parse the input SRT file using the `parse_srt` function (check its location, likely `src/parser.py`). Pass the required arguments, including `config.chunk_max_blocks`.
-    *   Call the `detect_context` function from `src.context_detector` with the parsed subtitle chunks, the speed mode, the client object (or `None`), and the loaded config.
-    *   Print the string returned by `detect_context` to the console. If any exceptions occur during parsing or detection, catch them and print an informative error message.
+Make sure to include necessary imports (`from datetime import datetime`, `from typing import Optional, List`).
+
+### Define the Parsing Function
+
+Create a function named `parse_srt` within the `src/parser.py` file. This function should accept two arguments:
+
+1.  `file_path`: A string representing the path to the uploaded file.
+2.  `chunk_max_blocks`: An integer specifying the maximum number of subtitle blocks allowed per chunk.
+
+The function should return a list of lists, where each inner list contains `SubtitleBlock` objects (`List[List[SubtitleBlock]]`).
+
+### Input File Validation
+
+Before attempting to parse, the `parse_srt` function must validate the input `file`.
+
+*   Check if the file extension is `.srt`. If not, raise a `ValidationError`.
+*   Check if the file's content length (accessible via an attribute like `content_length` on the `FileStorage` object) is greater than 2,000,000 bytes (2MB). If it exceeds this limit, raise a `ValidationError`.
+
+### SRT Content Parsing
+
+If validation passes, read the content of the `file`. Use the `srt` library's parsing capabilities (e.g., a function like `srt.parse()`) to convert the raw SRT text content into a sequence of subtitle objects provided by the library. Handle potential errors during this parsing process (e.g., malformed SRT content) by raising a `ParsingError`.
+
+### Data Structure Mapping
+
+Iterate through the parsed subtitle objects obtained from the `srt` library. For each original subtitle object, create an instance of the `SubtitleBlock` data class (defined in `src/models.py`). Map the relevant information (index, start time, end time, content text) from the library's object to the corresponding fields in your `SubtitleBlock` instance. Ensure the `translated_content` field is initially set to `None`. Store these `SubtitleBlock` instances in a single list.
+
+### Chunking Logic
+
+Take the complete list of `SubtitleBlock` objects created in the previous step. Divide this list into smaller, disjoint lists (chunks). Each chunk should contain at most `max_blocks` `SubtitleBlock` objects. The function should return these chunks as a list of lists. For example, if `max_blocks` is 100 and you have 250 blocks, the result should be `[[100 blocks], [100 blocks], [50 blocks]]`.
+
+## Manual Debugging Script
+
+Create a simple Python script located at `tests/manual/test_parser.py`. This script should use the above parser to process a srt file (the sole argument of the script) and print out the number of chunks as well as content of first few blocks in the first chunk.
+
+You should be able to run this script from the project root, like `uv run tests/manual/test_parser.py path/to/your/test.srt`.

@@ -10,6 +10,7 @@ This document describes the concrete code structure, modules, classes, functions
   - src/exceptions.py
   - src/models.py
   - src/parser.py
+  - src/gemini_helper.py
   - src/context_detector.py
   - src/chunk_translator.py
   - src/reassembler.py
@@ -36,9 +37,10 @@ project_root/
 │  │  config_loader.py      # Configuration loading
 │  │  exceptions.py         # Custom exceptions
 │  │  models.py             # Data models (DTOs, Config)
-│  │  parser.py
-│  │  context_detector.py # Handles its own LLM calls
-│  │  chunk_translator.py # Handles its own LLM calls
+│  │  parser.py             # SRT parsing and chunking
+│  │  gemini_helper.py      # Helper functions for Gemini API
+│  │  context_detector.py   # Detect context
+│  │  chunk_translator.py   # Translate chunks
 │  │  reassembler.py
 │
 │templates/            # Standard Flask templates folder
@@ -123,13 +125,21 @@ Classes
 Validates uploaded files before processing. Then use the srt library for parsing and chunking the uploaded srt into an in-memory object. The package is srt3 but still import srt.
 
 Functions
-- `parse_srt(file: FileStorage, max_blocks: int) -> sub: List[List[SubtitleBlock]]`
+- `parse_srt(file_path: str, chunk_max_blocks: int) -> sub: List[List[SubtitleBlock]]`
   - Ensures file extension is `.srt`
   - Checks `file.content_length <= 2_000_000`
   - Raises `ValidationError` (from `src.exceptions`) on failure
   - Read the file content and use `srt.parse()` to obtain subtitle objects
   - Maps each subtitle block in original content to a `SubtitleBlock` (from `src.models`)
   - Splits blocks into disjoint lists of size `max_blocks`
+
+### src/gemini_helper.py
+Facilitates the initialization of the `google-genai` client instance.
+
+Functions
+- `init_genai_client(config: Config) -> client: genai.client.Client`
+  - Initializes a `genai.client.Client` instance with the API key from the config.
+  - Raises `GenAIClientInitError` if initialization fails.
 
 ### src/context_detector.py
 Obtains a high-level context label from the first blocks by using a mock response or calling the LLM API directly using the `google-genai` SDK via a passed client instance.
@@ -228,9 +238,9 @@ Setup
 - Configure Python logging to console at `config.log_level`.
 - Create Flask app instance `app = Flask(__name__)`
 - **Instantiate shared Gemini client (Single instance for the app):**
-  - `genai_client_instance = None` # Initialize to None
+  - `genai_client = None` # Initialize to None
   - `try:`
-    - `client = genai.Client(api_key=config.gemini_api_key)` # Configure the library globally
+    - `genai_client = gemini_helper.init_genai_client(config)` # Configure the library globally
     - `logging.info("Gemini Client initialized successfully.")`
   - `except Exception as e:` # Catch potential exceptions during client init (e.g., invalid key format - specifics depend on SDK)
     - `logging.exception("Failed to initialize Gemini Client. App startup failed.")`
@@ -252,13 +262,13 @@ Routes
   - Renders `templates/index.html`, passing the list of configured languages to the template:
     `return render_template('index.html', languages=config.target_languages)`
 - `POST /translate`
-  - **Check Client:** Add a check at the beginning: `if genai_client_instance is None: return jsonify({"error": "Translation service is unavailable due to initialization failure."}), 503` (Service Unavailable) - *Note: Current setup raises error on init failure, so this might be redundant but good defense.*
+  - **Check Client:** Add a check at the beginning: `if genai_client is None: return jsonify({"error": "Translation service is unavailable due to initialization failure."}), 503` (Service Unavailable) - *Note: Current setup raises error on init failure, so this might be redundant but good defense.*
   - **Try/Catch Block:** Wrap the core logic in a `try...except` block to catch the custom exceptions and let the error handlers manage the response.
   - Get file: `file = request.files.get('file')` (handle potential missing file)
   - Call `parser.parse_srt(file, config.chunk_max_blocks) -> sub_chunks`
   - Get other parameters: `target_lang = request.form.get('target_lang')` (gets the selected full language name, e.g., "Vietnamese"), `speed_mode = request.form.get('speed_mode', 'normal')`. Add validation to ensure `target_lang` is in `config.target_languages`.
-  - Call `context_detector.detect_context(sub_chunks, speed_mode, genai_client_instance, config) -> context` **(Pass the shared client instance & config)**
-  - Execute `asyncio.run(chunk_translator.translate_all_chunks(context, sub_chunks, target_lang, speed_mode, genai_client_instance, config))` **(Pass the shared client instance & config)**
+  - Call `context_detector.detect_context(sub_chunks, speed_mode, genai_client, config) -> context` **(Pass the shared client instance & config)**
+  - Execute `asyncio.run(chunk_translator.translate_all_chunks(context, sub_chunks, target_lang, speed_mode, genai_client, config))` **(Pass the shared client instance & config)**
   - Call `reassembler.reassemble_srt(sub_chunks) -> translated_srt_bytes`
   - Create in-memory file: `buffer = io.BytesIO(translated_srt_bytes)`
   - Stream it back to user with Flask's `send_file`
@@ -280,14 +290,14 @@ Routes
 ## Workflow / Use Case Examples
 Example: user uploads `subs.srt`, selects "Vietnamese" and “fast” mode
 - `src.config_loader.load_config()` reads `TARGET_LANGUAGES="Vietnamese,French"` from `.env` and stores `["Vietnamese", "French"]` in `config.target_languages`.
-- `src.app` initializes the single `genai.Client` (or equivalent) instance at startup using `config.gemini_api_key`. If this fails, the app halts or enters a state where translation is unavailable.
+- `src.app` initializes the single `genai.Client` (or equivalent) instance at startup using `gemini_helper.init_genai_client(config)`. If this fails, the app halts or enters a state where translation is unavailable.
 - User visits `GET /`. `src.app.py` renders `index.html`, passing `languages=["Vietnamese", "French"]` to the template. The frontend JS populates the language selector with "Vietnamese" and "French".
 - User selects "Vietnamese", "fast" mode, uploads `subs.srt`, and clicks submit, triggering a `POST /translate`.
-- `src.app` receives the POST request, retrieves `target_lang='Vietnamese'` and `speed_mode='fast'`. Checks if `genai_client_instance` is valid. Validates that "Vietnamese" is in `config.target_languages`.
+- `src.app` receives the POST request, retrieves `target_lang='Vietnamese'` and `speed_mode='fast'`. Validates that "Vietnamese" is in `config.target_languages`.
 - `src.parser` checks file extension and size, chunks it into three lists of `SubtitleBlock` objects (100, 100, 50).
-- `src.app` calls `src.context_detector.detect_context`, passing the chunks, `speed_mode`, the **shared `genai_client_instance`**, and `config`.
+- `src.app` calls `src.context_detector.detect_context`, passing the chunks, `speed_mode`, the **shared `genai_client`**, and `config`.
 - `src.context_detector` extracts text, constructs a prompt, potentially selects a 'fast' model name (e.g., "gemini-1.5-flash-latest"), calls the appropriate method on the **passed `genai_client`** (with retries using `config`), parses the response → returns “cooking tutorial”.
-- `src.app` calls `src.chunk_translator.translate_all_chunks` using `asyncio.run`, passing context, chunks, `target_lang='Vietnamese'`, `speed_mode`, the **shared `genai_client_instance`**, and `config`.
+- `src.app` calls `src.chunk_translator.translate_all_chunks` using `asyncio.run`, passing context, chunks, `target_lang='Vietnamese'`, `speed_mode`, the **shared `genai_client`**, and `config`.
 - `src.chunk_translator` uses `asyncio.gather` to run `_translate_single_chunk` for each chunk. Each `_translate_single_chunk` call constructs a prompt (including `target_lang='Vietnamese'`), calls the appropriate method on the **passed `genai_client`** (potentially using a 'fast' model name, with retries), validates line counts, and updates `SubtitleBlock` objects in place.
 - `src.reassembler` combines the translated `SubtitleBlock` objects back into a single SRT formatted byte string.
 - `src.app` creates an `io.BytesIO` buffer with the bytes and uses `send_file` to stream the content back to the user's browser as a downloadable file named like `subs_Vietnamese.srt`.

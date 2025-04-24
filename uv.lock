@@ -383,7 +383,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-genai" },
+    { name = "google-genai", specifier = ">=1.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "srt", specifier = ">=3.5.3" },
     { name = "tenacity", specifier = ">=8.2.3" },

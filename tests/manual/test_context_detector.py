@@ -10,7 +10,7 @@ sys.path.insert(0, str(project_root))
 
 from src.config_loader import load_config
 from src.context_detector import detect_context
-from src.exceptions import ContextDetectionError, SubtitleParsingError
+from src.exceptions import ContextDetectionError, ParsingError
 from src.parser import parse_srt
 
 # Basic logging setup for the script
@@ -65,7 +65,7 @@ def main():
         logger.error(f"Error: SRT file not found at {args.srt_path}")
         print(f"Error: SRT file not found at {args.srt_path}", file=sys.stderr)
         sys.exit(1)
-    except (SubtitleParsingError, ContextDetectionError, ValueError) as e:
+    except (ParsingError, ContextDetectionError, ValueError) as e:
         logger.error(f"An error occurred: {e}")
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)

@@ -35,8 +35,6 @@ def load_config() -> Config:
         logging.error("Mandatory environment variable 'GEMINI_API_KEY' not found or empty.")
         sys.exit("Error: Missing mandatory 'GEMINI_API_KEY' in environment or .env file. Exiting.")
 
-    # --- Subtask 4: Handle Optional Variables with Defaults ---
-
     # Target Languages (List[str], comma-separated)
     default_target_languages = ["Vietnamese", "French"]
     target_languages_str = os.getenv("TARGET_LANGUAGES", ",".join(default_target_languages))
@@ -87,7 +85,6 @@ def load_config() -> Config:
         logging.warning(f"Invalid LOG_LEVEL='{os.getenv('LOG_LEVEL')}'. Must be one of {valid_log_levels}. Using default: {default_log_level}")
         log_level = default_log_level
 
-    # --- Subtask 5: Populate and Return Config Object ---
     config = Config(
         gemini_api_key=gemini_api_key,
         target_languages=target_languages,
