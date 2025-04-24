@@ -12,6 +12,7 @@ from src.config_loader import load_config
 from src.context_detector import detect_context
 from src.exceptions import ContextDetectionError, ParsingError
 from src.parser import parse_srt
+from src.gemini_helper import init_genai_client
 
 # Basic logging setup for the script
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,6 +37,18 @@ def main():
         # Optionally override log level from config if needed
         # logging.getLogger().setLevel(config.log_level.upper())
 
+        # Initialize GenAI client only if needed
+        genai_client = None
+        if args.speed_mode != "mock":
+            logger.info("Initializing GenAI client...")
+            try:
+                genai_client = init_genai_client(config)
+                logger.info("GenAI client initialized successfully.")
+            except Exception as e:
+                logger.error(f"Failed to initialize GenAI client: {e}. Proceeding without client for context detection.")
+                # Depending on requirements, you might want to exit here for non-mock modes
+                # sys.exit(1)
+
         # === Check if SRT file exists ===
         if not os.path.exists(args.srt_path):
             logger.error(f"Error: SRT file not found at {args.srt_path}")
@@ -48,13 +61,11 @@ def main():
         logger.info(f"Parsed {len(parsed_subtitles)} chunks.")
 
         # 3. Call detect_context
-        # For now, we pass None for genai_client as 'fast'/'normal' aren't fully implemented
-        # and 'mock' doesn't need it.
         logger.info(f"Calling detect_context in '{args.speed_mode}' mode...")
         detected_context = detect_context(
             sub=parsed_subtitles,
             speed_mode=args.speed_mode,
-            genai_client=None,  # Pass None for now
+            genai_client=genai_client,  # Pass the initialized client (or None)
             config=config
         )
 

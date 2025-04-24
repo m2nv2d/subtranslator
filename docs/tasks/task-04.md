@@ -5,7 +5,7 @@
 This project is a web application designed to translate subtitle files (`.srt`) using Google's Gemini large language model. To interact with the Gemini API, we need a standardized way to initialize the API client. This task involves creating a dedicated Python module (`src/gemini_helper.py`) that contains a function responsible solely for initializing this client using configuration details. This helper ensures the client initialization logic is centralized and reusable.
 
 **Prerequisites**
-
+*   Forget everything you know about Gemini's SDK. That was an older version. Always use the doc and examples I provide.
 *   Access to the project's codebase, specifically the `src` directory.
 *   Python environment set up with necessary dependencies installed (including `google-genai`). You should have a way to install packages (e.g., using `uv` or `pip`).
 *   Familiarity with Python functions, classes, imports, exception handling, and type hinting.
