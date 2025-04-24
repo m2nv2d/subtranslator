@@ -42,7 +42,6 @@ async def _translate_single_chunk(
         request_prompt = ""
         for i, block in enumerate(chunk):
             request_prompt += f"\n{i}\n{block.content}\n"
-        logging.debug(f"Chunk {chunk_index} prompt: {request_prompt}")
 
         logging.info(f"Chunk {chunk_index} sent for translation.")
         if speed_mode == "fast":
@@ -61,12 +60,10 @@ async def _translate_single_chunk(
                     response_mime_type='application/json',
                 )
             )
-        logging.debug(f"Chunk {chunk_index} response.text: {response.text}.")
 
         # Parse response
         try:
             translated_json = json.loads(response.text)
-            logging.debug(f"Chunk {chunk_index} json: {translated_json}")
             for block in translated_json:
                 block_index = block['index']
                 translated_lines = ""
@@ -102,13 +99,11 @@ async def translate_all_chunks(
     "translated_line_2": The second line (if it exists).
     ... and so on for subsequent lines within the same block.
     """
-    logging.debug(f"System prompt: {system_prompt}")
 
     logging.debug(f"Starting translation for {len(sub)} chunks...")
     try:
         async with asyncio.TaskGroup() as tg:
             for i, chunk in enumerate(sub):
-                logging.debug(f"Starting chunk {i}...")
                 tg.create_task(
                     _translate_single_chunk(
                         chunk_index=i,

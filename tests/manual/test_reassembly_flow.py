@@ -10,13 +10,14 @@ sys.path.insert(0, str(project_root))
 
 from src.config_loader import load_config
 from src.gemini_helper import init_genai_client
-from src.chunk_translator import translate_all_chunks
-from src.exceptions import ChunkTranslationError
 from src.parser import parse_srt
+from src.chunk_translator import translate_all_chunks
+from src.reassembler import reassemble_srt
+from src.exceptions import ChunkTranslationError
 from src.context_detector import detect_context
 
 async def main():
-    parser = argparse.ArgumentParser(description="Manual test script for chunk_translator.")
+    parser = argparse.ArgumentParser(description="Manual test script for reassembly flow.")
     parser.add_argument(
         "srt_file",
         type=str,
@@ -29,9 +30,16 @@ async def main():
         choices=["mock", "fast", "normal"],
         help="Translation mode ('mock', 'fast', or 'normal')."
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        help="Set the logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL)."
+    )
 
     args = parser.parse_args()
 
+    logging.basicConfig(level=args.log_level, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f"Running test with srt_file: {args.srt_file}, speed_mode: {args.speed_mode}")
 
     # --- Load Configuration ---
@@ -69,7 +77,7 @@ async def main():
 
     # --- Detect Context ---
     try:
-        logging.info("\nDetecting context...")
+        logging.info("Detecting context...")
         detected_context = detect_context(
             sub=subtitle_chunks,
             speed_mode=args.speed_mode,
@@ -99,40 +107,31 @@ async def main():
             genai_client=genai_client if args.speed_mode != "mock" else None,
             config=config
         )
-        logging.info("\nChunk translation completed.")
-
-        # --- Print Results (First 20 blocks) ---
-        logging.info("\n--- Translation Results (First 20 blocks) ---")
-        block_count = 0
-        total_blocks = sum(len(chunk) for chunk in subtitle_chunks)
-        logging.info(f"Total blocks parsed: {total_blocks}")
-
-        if not subtitle_chunks or not subtitle_chunks[0]:
-            logging.error("No subtitle data to display.")
-            return
-
-        for chunk in subtitle_chunks:
-            if block_count >= 20:
-                break
-            for block in chunk:
-                if block_count >= 20:
-                    break
-                logging.info(f"Block {block.index}:")
-                logging.info(f"  Original: {block.content}")
-                logging.info(f"  Translated: {block.translated_content if block.translated_content else '[No Translation]'}")
-                block_count += 1
-
-        if block_count == 0:
-            print("No subtitle blocks were processed or found.")
+        logging.info("Chunk translation completed.")
 
     except ChunkTranslationError as e:
         logging.error(f"\n--- Chunk Translation Failed --- Error: {e}")
     except Exception as e:
         logging.exception(f"\n--- An unexpected error occurred during translation --- Error: {e}") # Use logging.exception for traceback
 
-if __name__ == "__main__":
-    # --- Logging Configuration --- 
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
-    
+    # --- Run the reassembly ---
+    logging.info(f"Starting reassembly...")
+    try:
+        reassembled_content = reassemble_srt(subtitle_chunks)
+        logging.info("\nReassembly completed.")
+
+        # Save the reassembled content to the new SRT file
+        input_path = Path(args.srt_file)
+        output_filename = f"{input_path.stem}_translated.srt"
+        output_path = input_path.parent / output_filename
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(reassembled_content)
+            logging.info(f"Reassembled content saved to: {output_path}")
+        except IOError as e:
+            logging.error(f"Error writing reassembled content to file {output_path}: {e}")
+    except Exception as e:
+        logging.error(f"\n--- Reassembly Failed --- Error: {e}")
+
+if __name__ == "__main__":    
     asyncio.run(main())
