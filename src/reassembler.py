@@ -2,7 +2,7 @@ from typing import List
 from datetime import datetime, timedelta
 from srt import Subtitle, compose
 
-from .models import SubtitleBlock
+from models import SubtitleBlock
 
 def reassemble_srt(sub_chunks: List[List[SubtitleBlock]]) -> bytes:
     """Reassembles translated subtitle chunks into a complete SRT file content.

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT Subtitle Translator</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 600px; margin: auto; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="file"], select, button { display: block; width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .error { color: red; margin-bottom: 15px; }
+        .result-link { margin-top: 20px; }
+    </style>
+    <link rel="shortcut icon" href="/favicon.ico">
+</head>
+<body>
+    <h1>Subtitle Translator</h1>
+
+    <form action="/translate" method="post" enctype="multipart/form-data" id="translate-form">
+        <div>
+            <label for="file">SRT File:</label>
+            <input type="file" id="file" name="file" accept=".srt" required>
+        </div>
+
+        <div>
+            <label for="target_lang">Target Language:</label>
+            <select id="target_lang" name="target_lang" required>
+                {% if languages %}
+                    {% for lang in languages %}
+                        <option value="{{ lang }}">{{ lang }}</option>
+                    {% endfor %}
+                {% else %}
+                    <option value="" disabled>No languages configured</option>
+                {% endif %}
+            </select>
+        </div>
+
+        <div>
+            <label for="speed_mode">Processing Mode:</label>
+            <select id="speed_mode" name="speed_mode">
+                <option value="fast">Fast</option>
+                <option value="normal">Normal</option>
+            </select>
+        </div>
+
+        <button type="submit">Translate</button>
+    </form>
+
+    <div id="error-message" class="error" style="display: none;"></div>
+    <div id="result" class="result-link" style="display: none;">
+        <p>Translation complete. <a id="download-link" href="#">Download Translated File</a></p>
+    </div>
+
+    <script>
+        const form = document.getElementById('translate-form');
+        const errorMessage = document.getElementById('error-message');
+        const resultDiv = document.getElementById('result');
+        const downloadLink = document.getElementById('download-link');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+
+            errorMessage.style.display = 'none';
+            resultDiv.style.display = 'none';
+            errorMessage.textContent = '';
+
+            const formData = new FormData(form);
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Translating...';
+
+            try {
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    // Try to parse error JSON from server
+                    let errorText = `Error ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorJson = await response.json();
+                        if (errorJson && errorJson.error) {
+                            errorText = errorJson.error;
+                        }
+                    } catch (jsonError) {
+                        // Ignore if response is not JSON
+                        console.error("Could not parse error response as JSON:", jsonError);
+                    }
+                    throw new Error(errorText);
+                }
+
+                // Handle successful response (file download)
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'translated.srt'; // Default filename
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                    if (filenameMatch && filenameMatch.length > 1) {
+                        filename = filenameMatch[1];
+                    }
+                }
+
+                downloadLink.href = url;
+                downloadLink.download = filename;
+                resultDiv.style.display = 'block';
+
+            } catch (error) {
+                console.error('Translation request failed:', error);
+                errorMessage.textContent = `Translation failed: ${error.message}`;
+                errorMessage.style.display = 'block';
+            } finally {
+                 submitButton.disabled = false;
+                 submitButton.textContent = 'Translate';
+            }
+        });
+    </script>
+
+</body>
+</html>
