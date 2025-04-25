@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const originalFilename = file.name;
                 const filenameBase = originalFilename.substring(0, originalFilename.lastIndexOf('.')) || originalFilename;
                 const targetLang = targetLangSelect.value;
-                const downloadFilename = `${filenameBase}_translated_to_${targetLang}.srt`;
+                const downloadFilename = `${filenameBase}_${targetLang}.srt`;
 
                 // Create a temporary link to trigger the download
                 const url = window.URL.createObjectURL(blob);
