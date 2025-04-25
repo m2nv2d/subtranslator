@@ -3,10 +3,10 @@ from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 from google import genai
-from .gemini_helper import FAST_MODEL, NORMAL_MODEL
+from gemini_helper import FAST_MODEL, NORMAL_MODEL
 
-from .exceptions import ContextDetectionError
-from .models import Config, SubtitleBlock
+from exceptions import ContextDetectionError
+from models import Config, SubtitleBlock
 
 logger = logging.getLogger(__name__)
 

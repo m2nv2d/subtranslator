@@ -6,10 +6,10 @@ import logging
 
 from google import genai
 from google.genai import types
-from .gemini_helper import FAST_MODEL, NORMAL_MODEL
+from gemini_helper import FAST_MODEL, NORMAL_MODEL
 
-from .models import Config, SubtitleBlock
-from .exceptions import ChunkTranslationError
+from models import Config, SubtitleBlock
+from exceptions import ChunkTranslationError
 
 @tenacity.retry(
     stop=tenacity.stop_after_attempt(3), # Default value, will be set dynamically later
