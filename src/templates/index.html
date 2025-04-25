@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT Translator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+</head>
+<body>
+    <h1>SRT Subtitle Translator</h1>
+
+    <form id="translate-form" enctype="multipart/form-data">
+        <div>
+            <label for="file-input">Upload SRT File:</label>
+            <input type="file" id="file-input" name="file" accept=".srt" required>
+        </div>
+
+        <div>
+            <label for="target-lang">Target Language:</label>
+            <select id="target-lang" name="target_lang" required>
+                <option value="" disabled selected>Select Language</option>
+                {% for lang in languages %}
+                <option value="{{ lang }}">{{ lang }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label for="speed-mode">Speed Mode:</label>
+            <select id="speed-mode" name="speed_mode">
+                <option value="normal" selected>Normal</option>
+                <option value="fast">Fast</option>
+            </select>
+        </div>
+
+        <div>
+            <button type="submit" id="submit-button">Translate</button>
+        </div>
+    </form>
+
+    <div id="status-message"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

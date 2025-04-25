@@ -7,7 +7,7 @@ from pathlib import Path
 
 from google import genai
 from flask import (Flask, jsonify, render_template, request,
-                   send_file)
+                   send_file, send_from_directory)
 from tenacity import RetryError
 from werkzeug.exceptions import HTTPException, InternalServerError
 from werkzeug.utils import secure_filename
@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 # Create Flask app instance
 app = Flask(__name__)
+app.static_folder = 'static' # Explicitly set static folder
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 # AI Client Initialization
 genai_client: genai.client.Client | None = None
