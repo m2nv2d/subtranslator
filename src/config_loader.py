@@ -6,7 +6,7 @@ from typing import List
 from dotenv import load_dotenv
 from pathlib import Path
 
-from .models import Config
+from models import Config
 
 def load_config() -> Config:
     """

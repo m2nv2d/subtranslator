@@ -1,7 +1,7 @@
 from google import genai
 
-from .exceptions import GenAIClientInitError
-from .models import Config
+from exceptions import GenAIClientInitError
+from models import Config
 
 FAST_MODEL = "gemini-2.5-flash-preview-04-17"
 NORMAL_MODEL = "gemini-2.5-pro-preview-03-25"
