@@ -11,9 +11,5 @@ wheels/
 .venv
 .env
 
-# AI
-.roo
-.windsurfrules
-
 # Tests
 tests/srt
