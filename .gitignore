@@ -13,6 +13,8 @@ wheels/
 
 # AI
 .roo
+.roorules
+.clinerules
 .windsurfrules
 
 # Tests
