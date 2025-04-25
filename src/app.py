@@ -115,7 +115,7 @@ def handle_generic_exception(error):
 @app.route('/favicon.ico')
 def favicon():
     """Serves the favicon."""
-    static_dir = os.path.join(app.root_path, '..', 'templates', 'static')
+    static_dir = os.path.join(app.root_path, '..', 'static')
     return send_from_directory(static_dir, 'favicon.ico', mimetype='image/png')
 
 # Frontend Route (GET /)
