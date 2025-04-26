@@ -15,6 +15,9 @@ This document describes the concrete code structure, modules, classes, functions
   - src/chunk_translator.py
   - src/reassembler.py
   - src/app.py (Flask routes & orchestration)
+  - src/templates/index.html
+  - src/static/css/style.css
+  - src/static/js/app.js
 - Interfaces & Interaction Patterns
 - Workflow / Use Case Examples
 - Implementation Notes, Edge Cases, and TODOs
@@ -83,14 +86,17 @@ Purpose: Load and validate environment variables at startup.
 
 Functions and classes
 - `load_config() -> Config`
-  - Reads `.env` (located in the project root) via python‑dotenv
-  - Validates presence of `GEMINI_API_KEY` (logs and exits if missing)
-  - Loads optional vars with defaults:
-    - `TARGET_LANGUAGES`: String containing comma-separated **full language names** (e.g., `"Vietnamese,French"`). Parses this string into a `List[str]`. (default: `"Vietnamese,French"` which parses to `["Vietnamese", "French"]`)
-    - `CHUNK_MAX_BLOCKS`: int (default `100`)
-    - `RETRY_MAX_ATTEMPTS`: int (default `6`)
-    - `LOG_LEVEL`: str (default `"INFO"`)
-  - Returns a `Config` data class instance (defined in `src.models`)
+  - Locates and reads `.env` from project root (one level up from src) via python‑dotenv
+  - Handles missing .env gracefully by falling back to environment variables
+  - Validates presence of `GEMINI_API_KEY` (logs error and exits with message if missing)
+  - Loads optional vars with defaults and extensive validation:
+    - `TARGET_LANGUAGES`: Comma-separated full language names (e.g., `"Vietnamese,French"`). 
+      Strips whitespace, filters empty entries, falls back to default `["Vietnamese", "French"]` if invalid
+    - `CHUNK_MAX_BLOCKS`: Positive integer (default `100`)
+    - `RETRY_MAX_ATTEMPTS`: Non-negative integer (default `6`)
+    - `LOG_LEVEL`: Valid uppercase log level string (default `"INFO"`, must be one of `["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]`)
+  - Logs warnings for any parsing/validation issues
+  - Returns a `Config` data class instance
 
 ### src/exceptions.py
 Custom exception hierarchy for clear error handling within the application.
@@ -118,23 +124,25 @@ Classes
   - `gemini_api_key: str`
   - `target_languages: List[str]` # List of full language names (e.g., ["Vietnamese", "French"])
   - `chunk_max_blocks: int` # Default to 100
-  - `retry_max_attempts: int` # Default to 5
+  - `retry_max_attempts: int` # Default handled in config_loader (currently 6)
   - `log_level: str`
 
 ### src/parser.py
-Validates uploaded files before processing. Then use the srt library for parsing and chunking the uploaded srt into an in-memory object. The package is srt3 but still import srt.
+Validates SRT files specified by path before processing. Then use the srt library for parsing and chunking the uploaded srt into an in-memory object. The package is srt3 but still import srt.
 
 Functions
-- `parse_srt(file_path: str, chunk_max_blocks: int) -> sub: List[List[SubtitleBlock]]`
+- `parse_srt(file_path: str, chunk_max_blocks: int) -> sub: List[List[SubtitleBlock]]` (Note: Expects a path to a temporarily saved file, not a file stream/object).
   - Ensures file extension is `.srt`
-  - Checks `file.content_length <= 2_000_000`
-  - Raises `ValidationError` (from `src.exceptions`) on failure
-  - Read the file content and use `srt.parse()` to obtain subtitle objects
+  - Checks file size (must be `> 0` and `<= 2MB`).
+  - Raises `ValidationError` on validation failure (extension, size, empty file). Raises `ParsingError` if the file cannot be read or SRT content is malformed.
+  - Reads the file content using UTF-8 encoding (replacing errors) and uses `srt.parse()` to obtain subtitle objects.
   - Maps each subtitle block in original content to a `SubtitleBlock` (from `src.models`)
   - Splits blocks into disjoint lists of size `max_blocks`
+  - Returns an empty list `[]` if the SRT file contains no valid subtitle blocks after parsing.
 
 ### src/gemini_helper.py
 Facilitates the initialization of the `google-genai` client instance.
+- Defines constants for model names (`FAST_MODEL`, `NORMAL_MODEL`).
 
 Functions
 - `init_genai_client(config: Config) -> client: genai.client.Client`
@@ -154,14 +162,14 @@ Function
 - `detect_context(`
     `sub: List[List[SubtitleBlock]],`
     `speed_mode: str,` # Values: "mock", "fast", or "normal"
-    `genai_client: genai.client.Client,` # (optional) pass the initialized Client instance, only required if speed_mode isn't "mock"
+    `genai_client: Optional[genai.client.Client],` # Pass the initialized Client instance; *required* if speed_mode is "fast" or "normal", otherwise ignored.
     `config: models.Config` # Pass config for retry settings (required)
   `) -> str`
-  - Extracts text from first ~100 lines of the *first chunk* in `sub`.
+  - Extracts text from *all lines* of the *first chunk* in `sub`.
   - Determine the method to use based on value of `speed_mode`. We have a different generation method for mock, and one for fast or normal.
   - If speed_mode = mock, we just return some random context.
-  - If speed_mode is fast or normal, we need to use the passed genai_client instance to make remote API requests for context analysis. Use `tenacity` decorator (configured with `config.retry_max_attempts`) on an internal helper function or directly here to wrap the API call.
-  - Returns context string or raises `ContextDetectionError` on failure after retries.
+  - If speed_mode is 'fast' or 'normal', uses the passed `genai_client` instance (with specific model names `FAST_MODEL` or `NORMAL_MODEL` selected based on `speed_mode`) to make remote API requests. Uses a `tenacity` decorator directly on the function, configured with a **hardcoded 3 attempts** (ignoring `config.retry_max_attempts`), to wrap the API call.
+  - Returns context string. Raises `ValueError` if `speed_mode` is invalid. On API failure after retries, `tenacity` reraises the original exception from the API client.
 
 ### src/chunk_translator.py
 Translates chunks in parallel using asyncio with a mock response or LLM API calls via the `google-genai` SDK using a passed client instance.
@@ -183,36 +191,75 @@ Functions
     `genai_client: genai.client.Client,` # (optional) pass the initialized Client instance, only required if speed_mode isn't "mock"
     `config: models.Config` # Pass config for retry settings (required)
   `) -> None`
-  - Uses `asyncio.gather` to run `_translate_single_chunk` concurrently for each chunk in `sub`, passing `genai_client` (optional) and `config`.
-  - Aborts and raises `ChunkTranslationError` on any failure.
+  - Uses `asyncio.TaskGroup` to run `_translate_single_chunk` concurrently for each chunk in `sub`, passing `genai_client` (optional) and `config`.
+  - Catches exceptions from tasks (including retried API errors from `_translate_single_chunk`) and raises `ChunkTranslationError`.
 
 - `async _translate_single_chunk(`
-    `context: str,`
+    `system_prompt: str,`
     `chunk_index: int,`
     `chunk: List[SubtitleBlock],`
-    `target_lang: str,` # Full language name (e.g., "Vietnamese")
+    `target_lang: str,` # Full language name (e.g., "Vietnamese") - *Note: Used by caller (`translate_all_chunks`) to build `system_prompt`.*
     `speed_mode: str,` # Values: "mock", "fast", or "normal"
-    `genai_client: genai.client.Client,` # (optional) pass the initialized Client instance, only required if speed_mode isn't "mock"
+    `genai_client: Optional[genai.client.Client],` # (optional) pass the initialized Client instance, only required if speed_mode isn't "mock"
     `config: models.Config` # Pass config for retry settings (required)
   `) -> None`
-  - Determine the method to use based on value of `speed_mode`. We have a different generation method for mock, and one for fast or normal.
-  - The mock response doesn't do any transaltion, waits for a small period, and for each block in the chunk, copy the original content into the translated field.
-  - The method that use real LLMs operates differently. Just add the retry logic with the `tenacity` decorator (configured with `config.retry_max_attempts`) on this function without implementing any logic code that calls the LLM and modify the chunk object (someone else would do that).
-  - Raises `ChunkTranslationError` on API failures after all attempt.
+  - Determine the method based on `speed_mode`. For 'fast'/'normal', uses the **async** client (`genai_client.aio.models.generate_content`) with appropriate model (`FAST_MODEL`/`NORMAL_MODEL`), requesting **JSON output**.
+  - The 'mock' mode avoids API calls, copies original `content` to `translated_content` for each block, and includes a small `asyncio.sleep`.
+  - Uses a `tenacity` decorator directly on the function, configured with a **hardcoded 3 attempts** (ignoring `config.retry_max_attempts`). After a successful API call, it **parses the JSON response** and modifies the `SubtitleBlock` objects in the passed `chunk` list by setting the `translated_content` field.
+  - Raises `ChunkTranslationError` if JSON parsing fails. On API failure after retries, `tenacity` reraises the original exception from the API client (which is then caught and wrapped by `translate_all_chunks`).
 
 ### src/reassembler.py
 Merges translated blocks back into a single .srt formatted byte stream suitable for direct download.
 
 Function
 - `reassemble_srt(sub: List[List[SubtitleBlock]]) -> bytes`
-  - Formats each block using srt or manual templating:
-    ```
-    1
-    00:00:01,000 --> 00:00:04,000
-    translated line 1
-    translated line 2
-    ```
+  - Uses the `srt` library (`srt.compose`) to format the blocks. Uses `translated_content` if available, otherwise falls back to the original `content`.
   - Encodes the final string to bytes, ready to be sent in the response.
+
+### src/templates/index.html
+Renders the primary user interface.
+
+Key Components & Requirements:
+-   Standard HTML5 structure.
+-   Links to `static/css/style.css` and `static/js/app.js`. Includes `favicon.ico`.
+-   A main form (`id="translate-form"`, `enctype="multipart/form-data"`) containing:
+    -   File input (`name="file"`, `accept=".srt"`, required).
+    -   Target language select (`name="target_lang"`, required).
+        -   Options populated dynamically via Jinja loop over the `languages` variable passed from the backend (list of full language names).
+    -   Speed mode select (`name="speed_mode"`, values "normal", "fast", default "normal").
+    -   Submit button (`id="submit-button"`).
+-   A status display area (`id="status-message"`) for feedback from `app.js`.
+
+### src/static/js/app.js
+Handles client-side interactivity and communication with the backend.
+
+Key Logic & Requirements:
+-   **Initialization:** Attaches listeners after `DOMContentLoaded`. Gets references to form elements (`#translate-form`, `#file-input`, `#target-lang`, `#speed-mode`, `#submit-button`, `#status-message`).
+-   **Form Submission:**
+    -   Intercepts form `submit` event, prevents default.
+    -   Performs basic client-side validation (file presence, `.srt` extension, language selection).
+    -   Constructs `FormData` including `file`, `target_lang`, and `speed_mode`.
+    -   Disables submit button and updates `#status-message` (class `status-processing`) during processing.
+-   **API Interaction:**
+    -   Sends an asynchronous `fetch` `POST` request to the `/translate` endpoint with the `FormData`.
+-   **Response Handling:**
+    -   **Success (response.ok):** Expects the response body to be the translated SRT file (`Blob`). Triggers a client-side download using an object URL and dynamically generated filename (`original_stem_TargetLanguage.srt`). Updates `#status-message` (class `status-success`).
+    -   **Error (!response.ok):** Attempts to parse response body as JSON, expecting `{ "error": "..." }`. Displays the error message (or a fallback HTTP status error) in `#status-message` (class `status-error`).
+-   **UI State:** Re-enables the submit button in a `finally` block. Updates `#status-message` content and class (`status-processing`, `status-success`, `status-error`) based on request state/outcome.
+
+### src/static/css/style.css
+Provides visual styling for `index.html`.
+
+Key Styling Aspects:
+-   Basic page layout, typography, and color scheme.
+-   Styles for the main form container (`#translate-form`) for centered layout and appearance.
+-   Consistent styling for form controls (`input`, `select`, `button`).
+-   Distinct visual states for the submit button (`button`, `button:hover`, `button:disabled`).
+-   Specific background, text, and border colors for the status message states using classes:
+    -   `.status-processing`
+    -   `.status-success`
+    -   `.status-error`
+-   Ensures `#status-message` has appropriate dimensions and alignment.
 
 ### src/app.py (Flask routes & orchestration)
 Entry point for the web app, wiring all components together. Initializes and manages the single `genai.Client` instance. Located within the `src` package.
@@ -234,9 +281,10 @@ Imports
 - `tenacity` # Potentially needed if defining retry config here
 
 Setup
-- Load app config via `config_loader.load_config() -> config: models.Config`
+- Load app config via `config_loader.load_config() -> config: models.Config`. Halts startup (`SystemExit`) if loading fails.
 - Configure Python logging to console at `config.log_level`.
-- Create Flask app instance `app = Flask(__name__)`
+- Create Flask app instance `app = Flask(__name__)`, explicitly setting `static_folder`.
+- Adds a route for `/favicon.ico`.
 - **Instantiate shared Gemini client (Single instance for the app):**
   - `genai_client = None` # Initialize to None
   - `try:`
@@ -244,15 +292,15 @@ Setup
     - `logging.info("Gemini Client initialized successfully.")`
   - `except Exception as e:` # Catch potential exceptions during client init (e.g., invalid key format - specifics depend on SDK)
     - `logging.exception("Failed to initialize Gemini Client. App startup failed.")`
-    - raise RuntimeError("Critical component (Gemini Client) failed to initialize.") from e # Example: Halt startup
+    - raise `RuntimeError`("Critical component (Gemini Client) failed to initialize.") from e # Halts startup
 
-**Error Handling Setup**
+Error Handling Setup
 - Define custom error handlers using `@app.errorhandler`:
   - `@app.errorhandler(exceptions.ValidationError)` -> `return jsonify({"error": str(e)}), 400`
   - `@app.errorhandler(exceptions.ParsingError)` -> `return jsonify({"error": str(e)}), 400` or `422`
   - `@app.errorhandler(exceptions.ContextDetectionError)` -> `return jsonify({"error": "Failed to detect context: " + str(e)}), 500`
   - `@app.errorhandler(exceptions.ChunkTranslationError)` -> `return jsonify({"error": "Failed during translation: " + str(e)}), 500`
-  - `@app.errorhandler(exceptions.ApiHelperError)` -> `return jsonify({"error": "LLM API Error: " + str(e)}), 502` # Catch errors raised by services
+  - Note: Specific handlers for `GenAIClientInitError`, `GenAIRequestError`, `GenAIParsingError` are not defined; these would likely be caught by `RetryError` or the generic `Exception` handler.
   - `@app.errorhandler(tenacity.RetryError)` -> `return jsonify({"error": "LLM API failed after multiple retries: " + str(e)}), 504` (Gateway Timeout)
   - `@app.errorhandler(werkzeug.exceptions.HTTPException)` -> Handle standard Flask/Werkzeug HTTP errors if needed.
   - `@app.errorhandler(Exception)` -> Generic fallback: `logging.exception("Unhandled error")`, `return jsonify({"error": "An unexpected error occurred"}), 500`
@@ -263,17 +311,16 @@ Routes
     `return render_template('index.html', languages=config.target_languages)`
 - `POST /translate`
   - **Check Client:** Add a check at the beginning: `if genai_client is None: return jsonify({"error": "Translation service is unavailable due to initialization failure."}), 503` (Service Unavailable) - *Note: Current setup raises error on init failure, so this might be redundant but good defense.*
-  - **Try/Catch Block:** Wrap the core logic in a `try...except` block to catch the custom exceptions and let the error handlers manage the response.
+  - **Try/Finally Block:** Wrap the core logic in a `try...finally` block. The `try` allows exceptions to be caught by the error handlers, and the `finally` ensures temporary file cleanup.
   - Get file: `file = request.files.get('file')` (handle potential missing file)
-  - Call `parser.parse_srt(file, config.chunk_max_blocks) -> sub_chunks`
+  - Saves the uploaded file to a temporary directory using `secure_filename`. Calls `parser.parse_srt(temp_file_path, config.chunk_max_blocks) -> sub_chunks`, passing the path to the temporary file.
   - Get other parameters: `target_lang = request.form.get('target_lang')` (gets the selected full language name, e.g., "Vietnamese"), `speed_mode = request.form.get('speed_mode', 'normal')`. Add validation to ensure `target_lang` is in `config.target_languages`.
   - Call `context_detector.detect_context(sub_chunks, speed_mode, genai_client, config) -> context` **(Pass the shared client instance & config)**
   - Execute `asyncio.run(chunk_translator.translate_all_chunks(context, sub_chunks, target_lang, speed_mode, genai_client, config))` **(Pass the shared client instance & config)**
   - Call `reassembler.reassemble_srt(sub_chunks) -> translated_srt_bytes`
   - Create in-memory file: `buffer = io.BytesIO(translated_srt_bytes)`
-  - Stream it back to user with Flask's `send_file`
-
----
+  - Stream it back to user using Flask's `send_file`, providing the `io.BytesIO` buffer, mimetype (`text/srt`), `as_attachment=True`, and a generated `download_name` (e.g., `original_stem_language.srt`).
+  - The `finally` block ensures the temporary file and directory created for the upload are removed.
 
 ## Interfaces & Interaction Patterns
 - Request flow (conceptual, actual calls use imported functions):
@@ -294,7 +341,7 @@ Example: user uploads `subs.srt`, selects "Vietnamese" and “fast” mode
 - User visits `GET /`. `src.app.py` renders `index.html`, passing `languages=["Vietnamese", "French"]` to the template. The frontend JS populates the language selector with "Vietnamese" and "French".
 - User selects "Vietnamese", "fast" mode, uploads `subs.srt`, and clicks submit, triggering a `POST /translate`.
 - `src.app` receives the POST request, retrieves `target_lang='Vietnamese'` and `speed_mode='fast'`. Validates that "Vietnamese" is in `config.target_languages`.
-- `src.parser` checks file extension and size, chunks it into three lists of `SubtitleBlock` objects (100, 100, 50).
+- `src.app` saves the upload to a temporary file. `src.parser` checks the temporary file's extension and size, then parses and chunks it into lists of `SubtitleBlock` objects.
 - `src.app` calls `src.context_detector.detect_context`, passing the chunks, `speed_mode`, the **shared `genai_client`**, and `config`.
 - `src.context_detector` extracts text, constructs a prompt, potentially selects a 'fast' model name (e.g., "gemini-1.5-flash-latest"), calls the appropriate method on the **passed `genai_client`** (with retries using `config`), parses the response → returns “cooking tutorial”.
 - `src.app` calls `src.chunk_translator.translate_all_chunks` using `asyncio.run`, passing context, chunks, `target_lang='Vietnamese'`, `speed_mode`, the **shared `genai_client`**, and `config`.
@@ -306,14 +353,14 @@ Example: user uploads `subs.srt`, selects "Vietnamese" and “fast” mode
 
 ## Implementation Notes, Edge Cases, and TODOs
 - **SDK Methods & Client Initialization:** Verify the exact method names and parameters for text generation in the `google-genai` SDK (e.g., `generate_content`, `generate_text`, etc.) and update the calls in `context_detector` and `chunk_translator` accordingly. Ensure the client initialization in `app.py` matches the recommended pattern in the SDK documentation (e.g., using `genai.configure` and `genai.GenerativeModel` or `genai.Client`).
-- **Target Language Validation:** Add explicit validation in the `POST /translate` route in `app.py` to ensure the `target_lang` received from the form is one of the languages listed in `config.target_languages`. Return a 400 error if not.
+- **DONE:** Explicit validation exists in the `POST /translate` route in `app.py` ensuring `target_lang` is provided and is one of the languages listed in `config.target_languages`. Returns a 400 `ValidationError` if not.
 - **Filename Generation:** Consider if using the full language name in the output filename (e.g., `_Vietnamese.srt`) is desirable or if mapping it to a shorter code (e.g., `_vi.srt`) within `app.py` before calling `send_file` would be better.
-- Error Handling: Ensure exceptions from `src.exceptions` are caught appropriately in `src.app.py`. Specific handlers for `ApiHelperError`, `tenacity.RetryError`, and potential `google.api_core.exceptions` (if the SDK raises them directly for API issues) are crucial. Add robust error handling around `genai.Client` initialization in `app.py`, potentially halting startup on failure.
-- Retry Logic: Implement robust retry logic using `tenacity` within `context_detector.py` and `chunk_translator.py`, configured via `config.retry_max_attempts`. Ensure it correctly distinguishes between retryable and non-retryable API errors based on the exceptions raised by the `google-genai` SDK.
+- Error Handling: Handlers for custom exceptions (`ValidationError`, `ParsingError`, `ContextDetectionError`, `ChunkTranslationError`), `tenacity.RetryError`, `HTTPException`, and generic `Exception` are implemented in `app.py`. Robust error handling around `genai.Client` initialization (halting startup on failure) is also present. Note: `reraise=True` in retry decorators propagates underlying API exceptions (like `google.api_core.exceptions`).
+- Retry Logic: Retry logic using `tenacity` is implemented in `context_detector.py` and `chunk_translator.py`, but it uses **hardcoded 3 attempts**, ignoring `config.retry_max_attempts`. It currently retries broadly on `Exception` and uses `reraise=True`.
 - Handle empty or malformed SRT files gracefully (e.g., raise `ParsingError` in `src.parser`).
 - Cap `CHUNK_MAX_BLOCKS` to avoid excessive memory use or overly large LLM API calls.
 - **Gemini Client Management:** The single `genai.Client` (or equivalent) instance is created once in `app.py`. Ensure this instance is thread-safe if using multi-threaded Flask workers (check SDK documentation). The current design assumes passing the appropriate `model` name (derived from `speed_mode`) within the generation call on the single client instance is sufficient.
-- Response Validation: The check for matching numbers of input/output lines in `_translate_single_chunk` is critical to prevent data corruption.
+- Response Validation: **MISSING:** The check for matching numbers of input/output lines (or general structural validation beyond basic JSON parsing) in `_translate_single_chunk`'s response handling is currently missing.
 - TODO: Expose context sample size (currently hardcoded ~100 lines in `src.context_detector`) as a configuration option in `src.config_loader`.
 - Logging is configured in `src.app.py` based on the `LOG_LEVEL` environment variable. Ensure consistent logging across all modules, especially around API calls, retries, and client initialization.
 
