@@ -6,13 +6,13 @@ This task is part of migrating a Flask-based web application to FastAPI. The app
 ### Prerequisites
 *   Access to the project's source code repository.
 *   Familiarity with Python, Pydantic (`BaseModel`, `BaseSettings`), and Python type hinting.
-*   Access to the *Detailed Technical Design* document provided previously. You will need to refer to the sections describing `src/translator/models.py` and `src/config_loader.py` for the specifications of the original models and configuration variables.
+*   Access to the `docs/v2-flask/TECHNICAL_DESIGN.md` document provided previously. You will need to refer to the sections describing `src/translator/models.py` and `src/config_loader.py` for the specifications of the original models and configuration variables.
 
 ### Subtask 1: Define Pydantic Data Model (`SubtitleBlock`)
 *   **Objective:** Convert the existing data transfer object used for representing a single subtitle entry into a Pydantic model.
 *   **Location:** Modify the file `src/translator/models.py`.
 *   **Details:**
-    *   Consult the original *Detailed Technical Design* document's definition for the `SubtitleBlock` class under the `src/translator/models.py` section. Also, review the current implementation in the `src/translator/models.py` file within the codebase itself to capture any potential discrepancies from the document.
+    *   Consult the original `docs/v2-flask/TECHNICAL_DESIGN.md` document's definition for the `SubtitleBlock` class under the `src/translator/models.py` section. Also, review the current implementation in the `src/translator/models.py` file within the codebase itself to capture any potential discrepancies from the document.
     *   Define a Pydantic `BaseModel` named `SubtitleBlock` within `src/translator/models.py`.
     *   Ensure this model includes fields matching the original specification: `index` (integer), `start` (datetime object), `end` (datetime object), `content` (string), and `translated_content` (optional string, defaulting to `None`). Use appropriate Python type hints for each field.
     *   The previous implementation (likely a dataclass) should be replaced by this Pydantic model.
@@ -21,7 +21,7 @@ This task is part of migrating a Flask-based web application to FastAPI. The app
 *   **Objective:** Replace the custom configuration loading script (`src/config_loader.py`) with Pydantic's `BaseSettings` for automated loading and validation from environment variables or a `.env` file.
 *   **Location:** Create a new file named `src/config.py`. The old `src/config_loader.py` and the `Config` model previously in `src/translator/models.py` will become obsolete.
 *   **Details:**
-    *   Refer to the *Detailed Technical Design* document's description of `src/config_loader.py` and the `Config` model definition (previously in `src/translator/models.py`). Examine the current `src/config_loader.py` in the codebase and any existing `.env` file in the project root to understand the variable names and loading logic.
+    *   Refer to the `docs/v2-flask/TECHNICAL_DESIGN.md` document's description of `src/config_loader.py` and the `Config` model definition (previously in `src/translator/models.py`). Examine the current `src/config_loader.py` in the codebase and any existing `.env` file in the project root to understand the variable names and loading logic.
     *   In `src/config.py`, create a class named `Settings` that inherits from `pydantic_settings.BaseSettings`.
     *   Define fields within the `Settings` class to hold all configuration parameters previously managed by `config_loader.py`. These must include:
         *   `gemini_api_key`: `str` (This is mandatory).
