@@ -7,13 +7,13 @@ You are building the main web application file for a service that translates SRT
 ### Prerequisites
 
 *   Access to the project's `src` directory structure as defined in the technical design.
-*   Ensure necessary libraries are installed (Flask, python-dotenv, Werkzeug, google-generativeai, tenacity, srt). You might be using `uv` or `pip` for environment management.
+*   Ensure necessary libraries are installed (Flask, python-dotenv, Werkzeug, google-genai, tenacity, srt). You might be using `uv` or `pip` for environment management.
 *   Completed implementations (or stable interfaces) for the following modules should be available within the `src` directory. You will need to check these files for the exact, potentially updated, function signatures and data models:
     *   `src/config_loader.py`: Contains `load_config() -> models.Config`.
     *   `src/exceptions.py`: Defines custom exception classes like `ValidationError`, `ParsingError`, `ContextDetectionError`, `ChunkTranslationError`, `GenAIClientInitError`, etc.
     *   `src/models.py`: Defines data classes `Config` and `SubtitleBlock`. Check this file for the exact fields (e.g., `Config.target_languages`, `Config.chunk_max_blocks`, `Config.log_level`, `Config.gemini_api_key`, `SubtitleBlock` fields).
     *   `src/parser.py`: Contains `parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[models.SubtitleBlock]]`.
-    *   `src/gemini_helper.py`: Contains `init_genai_client(config: models.Config) -> genai.client.Client`. Note: `genai.client.Client` is the type hint from the `google-generativeai` library.
+    *   `src/gemini_helper.py`: Contains `init_genai_client(config: models.Config) -> genai.client.Client`. Note: `genai.client.Client` is the type hint from the `google-genai` library.
     *   `src.context_detector.py`: Contains `detect_context(sub: List[List[models.SubtitleBlock]], speed_mode: str, genai_client: genai.client.Client, config: models.Config) -> str`. Assume this function correctly implements a "mock" mode behavior based on the `speed_mode` parameter.
     *   `src.chunk_translator.py`: Contains an async function `translate_all_chunks(context: str, sub: List[List[models.SubtitleBlock]], target_lang: str, speed_mode: str, genai_client: genai.client.Client, config: models.Config) -> None`. For this task, treat calls to this as a placeholder; ensure the call signature is correct, but don't rely on it performing actual translation yet. Assume it handles mock logic based on `speed_mode` if necessary for testing flow.
     *   `src.reassembler.py`: Contains `reassemble_srt(sub: List[List[models.SubtitleBlock]]) -> bytes`.

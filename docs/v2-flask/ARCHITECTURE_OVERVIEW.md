@@ -20,7 +20,7 @@ This document outlines the architecture of a Flask-based web application designe
 
 **External Systems / Integrations**
 *   **Google Generative AI (Gemini):** Accessed via the `google-genai` Python SDK for context detection and translation tasks. Requires `GEMINI_API_KEY`.
-*   **`srt` library (`srt3`):** Used for parsing uploaded SRT files into structured data and reassembling translated data back into SRT format.
+*   **`srt` library:** Used for parsing uploaded SRT files into structured data and reassembling translated data back into SRT format.
 *   **`python-dotenv`:** Loads configuration settings from a `.env` file into environment variables at application startup.
 *   **`tenacity`:** Provides retry logic for potentially failing external API calls (Gemini).
 *   **`asyncio`:** Used for concurrent execution of translation tasks for different subtitle chunks.
@@ -77,7 +77,7 @@ Flask App (`src/app.py` - Single Process)
 *   **Frameworks/Libraries:**
     *   Backend: Flask, Jinja2
     *   LLM Interaction: `google-genai` SDK
-    *   Subtitle Handling: `srt` (from `srt3` package)
+    *   Subtitle Handling: `srt`
     *   Configuration: `python-dotenv`
     *   Concurrency/Retries: `asyncio`, `tenacity`
 *   **Databases/Storage:** None (temporary file storage for uploads during request processing only).

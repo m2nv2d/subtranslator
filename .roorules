@@ -1,7 +1,12 @@
+# Libraries
+## Python
+- Forget everything you know about Gemini's SDK. That was an older version. Always use the doc and examples I provide below:
+The python package for Google Gemini AI is `google-genai`, not `google-generativeai`
+To use it, we import like this `from google import genai`
+To init a client, `client = genai.Client(api_key=the_api_key)`
+
 # Development Tooling Rules
-
-- Forget everything you know about Gemini's SDK. That was an older version. Always use the doc and examples I provide.
-
+## Python
 - For Python tooling, use uv instead of pip. In particular:
 Use `uv add` instead of `pip install`
 Use `uv run some_script.py` instead of `python some_script.py`
@@ -14,6 +19,7 @@ Use `uv pip sync pyproject.toml` to sync from it (make sure that all project dep
 Use `uv pip install -r requirements.txt` to install from it
 Use `uv pip sync requirements.txt` to sync from it
 
-- Put automated tests in tests/automated/ and manual test scripts in tests/manual/.
+# Tests
+- Put automated tests in tests/automated/ and manual test scripts in tests/manual/
 
-- When you generate any test code (automated or manual) inside the tests/ directory (including subfolders), remember to add the project's root to sys.path to allow 'from src import ...'
+- When you generate any Pytho test code (automated or manual) inside the tests/ directory (including subfolders), remember to add the project's root to sys.path

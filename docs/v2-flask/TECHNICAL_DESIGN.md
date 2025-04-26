@@ -128,7 +128,7 @@ Classes
   - `log_level: str`
 
 ### src/translator/parser.py
-Validates SRT files specified by path before processing. Then use the srt library for parsing and chunking the uploaded srt into an in-memory object. The package is srt3 but still import srt.
+Validates SRT files specified by path before processing. Then use the srt library for parsing and chunking the uploaded srt into an in-memory object.
 
 Imports
 - `datetime`

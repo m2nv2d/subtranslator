@@ -105,7 +105,7 @@ We are building a minimal Flask-based web application that allows a user to uplo
 ## 8. Constraints & Assumptions
 *   **Platform:** Primarily developed and run in a Linux-like environment.
 *   **Technology:** Backend implemented in Python using Flask. Frontend uses vanilla JavaScript (ES6+), HTML5, and CSS3 rendered via Jinja2.
-*   **Dependencies:** Requires Python 3.x with `asyncio` support. Key libraries include `Flask`, `google-genai`, `python-dotenv`, `srt3` (imported as `srt`), `tenacity`. Package management via standard Python tools (e.g., `pip`, `uv`).
+*   **Dependencies:** Requires Python 3.x with `asyncio` support. Key libraries include `Flask`, `google-genai`, `python-dotenv`, `srt`, `tenacity`. Package management via standard Python tools (e.g., `pip`, `uv`).
 *   **LLM:** Relies exclusively on the Google Generative AI (Gemini) API, accessed via the `google-genai` SDK. Assumes a valid `GEMINI_API_KEY` is provided via configuration.
 *   **Input Files:** Assumes uploaded `.srt` files are generally well-formed and encoded in UTF-8. Maximum size is strictly enforced at 2MB.
 *   **Translation Modes:** Only "normal" and "fast" modes are exposed. The mapping to specific Gemini models is an internal implementation detail within `context_detector` and `chunk_translator`.

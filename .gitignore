@@ -6,9 +6,12 @@ build/
 dist/
 wheels/
 *.egg-info
-
-# Virtual environments
 .venv
+
+# JS-TS generated files
+node_modules/
+
+# Credentials
 .env
 
 # Tests
