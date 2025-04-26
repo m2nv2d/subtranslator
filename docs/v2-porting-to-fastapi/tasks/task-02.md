@@ -1,50 +1,59 @@
-**Task 2: Core Logic Adaptation**
+## Task 2: Core Logic Adaptation (Async Focus)
 
 **Project Context**
-This project is a web application designed to translate SRT (SubRip Text) subtitle files from one language to another using Google's Generative AI (Gemini). The core workflow involves:
-1.  Receiving an SRT file upload.
-2.  Parsing the SRT file into timed text blocks, grouped into chunks.
-3.  Detecting the overall context of the subtitles using the initial chunk(s).
-4.  Translating each chunk of subtitle blocks concurrently, using the detected context and target language.
-5.  Reassembling the translated blocks back into a valid SRT format.
-This task focuses on adapting the existing synchronous or partially asynchronous core logic functions to fully embrace asynchronous operations where I/O is involved, and ensuring they integrate correctly with a dependency injection pattern typical in frameworks like FastAPI.
+Following the setup of configuration and Pydantic models (Task 1), this task focuses on adapting the core subtitle processing logic found within the `src/translator/` directory. The primary goals are to ensure functions performing I/O (like API calls) are asynchronous (`async def`), to establish a clear pattern for managing and accessing the external Generative AI client instance using FastAPI's dependency injection principles, and to prepare for asynchronous file handling in the web layer.
 
 **Prerequisites**
--   The necessary project dependencies, including `google-generativeai`, `tenacity`, `srt`, and `aiofiles`, should be installed in the environment.
--   Pydantic models for data representation (specifically `SubtitleBlock`, likely found in `src/translator/models.py`) and application configuration (`Settings`, likely found in `src/config.py` and inheriting from Pydantic's `BaseSettings`) are assumed to be defined or available from a previous task.
--   An understanding that the application configuration (`Settings` instance) and the initialized Gemini AI client (`genai.Client` instance) will be provided to functions via parameters, managed by an external dependency injection mechanism (to be set up in the web framework layer).
+Ensure you have access to and familiarity with the following Python libraries and concepts:
+*   Python's `asyncio` and `async`/`await` syntax.
+*   The concept of Dependency Injection, particularly how FastAPI uses it.
+*   The `google-generativeai` library (or the specific SDK being used for Gemini).
+*   The `tenacity` library (for retry logic).
+*   The `aiofiles` library (for asynchronous file operations).
+*   The `srt` library (for subtitle parsing/composition).
+*   Access to the application state mechanism in FastAPI (e.g., `app.state` or `request.app.state`).
 
-**Subtask 1: Review Gemini Client Helper**
--   Locate the module `src/translator/gemini_helper.py`.
--   Review the function responsible for initializing the Gemini client (e.g., `init_genai_client`).
--   Ensure this function accepts the application configuration (the `Settings` object from `src/config.py`) and uses the API key from it to return an initialized `genai.Client` instance.
--   This initialization function itself typically remains synchronous. The client instance it creates will be managed and injected elsewhere.
+You will need the code from Task 1 completed (`src/config.py`, `src/dependencies.py`, `src/translator/models.py`).
 
-**Subtask 2: Adapt Context Detector**
--   Locate the module `src/translator/context_detector.py`.
--   Identify the primary function for context detection (signature likely similar to `detect_context(sub: List[List[SubtitleBlock]], speed_mode: str, genai_client: Optional[genai.client.Client], config: Settings) -> str`).
--   Modify this function definition to use `async def`.
--   Update the function signature to require the `genai.Client` instance and the application `Settings` instance as explicit, non-optional arguments.
--   Ensure that any calls made using the `genai_client` object to the Gemini API within this function are performed using `await`.
--   Verify that the existing retry logic (e.g., using a `tenacity` decorator) correctly wraps the `await`-ed API call.
+**Subtask 1: Manage Gemini Client Lifecycle and Dependency**
+The application requires a single, shared instance of the Gemini client (e.g., `genai.Client` or `genai.GenerativeModel`) to interact with the AI service. This instance should be initialized once when the application starts and made available to API endpoints that need it.
+1.  Locate the client initialization logic, likely within `src/translator/gemini_helper.py` (e.g., a function like `init_genai_client`).
+2.  Modify `src/main.py`. Implement an `async` [lifespan context manager](https://fastapi.tiangolo.com/advanced/events/) for the FastAPI application instance (`app`).
+3.  Within the `startup` part of the lifespan manager (before the `yield`):
+    *   Instantiate the `Settings` class from `src/config.py` to get configuration values.
+    *   Call the client initialization function (from `gemini_helper`) using the necessary configuration (like the API key from `Settings`).
+    *   Store the successfully initialized client instance in the application state (e.g., `app.state.genai_client = client_instance`).
+    *   Include error handling (e.g., `try...except`) around the initialization. If it fails, log a critical error and consider raising an exception to prevent the application from starting in a non-functional state.
+4.  Within the `shutdown` part of the lifespan manager (after the `yield`), add any necessary cleanup code for the client, if applicable (often not required, but good practice to consider).
+5.  Go to `src/dependencies.py`. Define a simple synchronous dependency function, named `get_gemini_client`, that accepts `request: Request` as an argument. This function should retrieve the pre-initialized client instance from the application state (`request.app.state.genai_client`) and return it.
 
-**Subtask 3: Adapt Chunk Translator**
--   Locate the module `src/translator/chunk_translator.py`.
--   Identify the main orchestration function (signature likely similar to `translate_all_chunks(context: str, sub: List[List[SubtitleBlock]], target_lang: str, speed_mode: str, genai_client: Optional[genai.client.Client], config: Settings) -> None`) and the helper function for translating single chunks (signature likely similar to `_translate_single_chunk(..., genai_client: Optional[genai.client.Client], config: Settings) -> None`).
--   Ensure both functions are defined using `async def`.
--   Update their signatures to require the `genai.Client` instance and the application `Settings` instance as explicit, non-optional arguments.
--   Verify that API calls within `_translate_single_chunk` use the `genai_client.aio` interface (or equivalent async method) and are performed using `await`.
--   Confirm that the retry logic correctly wraps these `await`-ed calls.
--   Ensure the concurrency mechanism in `translate_all_chunks` (e.g., `asyncio.TaskGroup`) remains appropriate for managing the async `_translate_single_chunk` tasks.
+**Subtask 2: Adapt Service Functions for Async and Dependencies**
+Review and update the core service functions to align with async practices and dependency injection.
+1.  Examine `src/translator/context_detector.py`. Ensure the main function responsible for detecting context (e.g., `detect_context`) is defined using `async def`, as it will involve network I/O when communicating with the Gemini API. Update its function signature to explicitly accept the Gemini client instance and the `Settings` instance as parameters. Remove any code that attempts to initialize the client internally; it should rely on the instance passed to it.
+2.  Examine `src/translator/chunk_translator.py`. Verify that the functions responsible for orchestrating chunk translation (e.g., `translate_all_chunks`) and translating individual chunks (e.g., `_translate_single_chunk`) are already defined using `async def`. Update their function signatures to explicitly accept the Gemini client instance and the `Settings` instance as parameters. Ensure any existing `tenacity` retry decorators are compatible with async functions (they generally are) and remain in place. These functions should use the passed client instance for API calls.
+3.  Ensure all functions modified above now import necessary types like the client type from the `google.generativeai` library and the `Settings` type from `src.config` for type hinting in their signatures.
 
-**Subtask 4: Adapt Parser for Async File Handling**
--   Locate the module `src/translator/parser.py`.
--   Identify the SRT parsing function (signature likely similar to `parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[SubtitleBlock]]`).
--   This function's primary role is parsing content from a file path using the `srt` library. If the `srt` library itself does not offer asynchronous file reading, this function (`parse_srt`) may remain internally synchronous.
--   Confirm that its signature accepts a file path string. The responsibility for asynchronously writing the uploaded file content (received as `UploadFile` in the web layer) to this temporary file path using `aiofiles` lies with the *calling code* (the route handler, to be implemented later), not within `parse_srt` itself.
--   Ensure the function retrieves necessary parameters like `chunk_max_blocks` via its arguments (the caller will extract this from the `Settings` object).
+**Subtask 3: Plan for Async File Handling in Parser**
+Review `src/translator/parser.py`. This module is responsible for parsing the `.srt` file content.
+1.  Identify the main parsing function (e.g., `parse_srt`). Note that it likely accepts a file path as input and uses the synchronous `srt` library internally.
+2.  Recognize that while the *parsing logic itself* might remain synchronous (due to the underlying `srt` library), the process of *reading the uploaded file data* and *saving it to a temporary location* will be handled asynchronously in the API route handler (in `src/main.py`, to be implemented in Phase 3) using `aiofiles`.
+3.  Therefore, **no changes are strictly required within `src/translator/parser.py` for this specific subtask**. The existing function signature (accepting a file path) is likely sufficient. The key takeaway is understanding that the asynchronous file read/write operations will happen *before* this synchronous parsing function is called by the route handler.
 
-**Subtask 5: Review Reassembler**
--   Locate the module `src/translator/reassembler.py`.
--   Identify the function responsible for reassembling the translated chunks into SRT format (signature likely similar to `reassemble_srt(sub: List[List[SubtitleBlock]]) -> bytes`).
--   Review its implementation. This function typically involves synchronous, CPU-bound operations (string formatting, joining data). It should not require conversion to `async def`. No changes related to async adaptation are expected here.
+**Subtask 4: Verify Reassembler Synchronicity**
+Review `src/translator/reassembler.py`. This module combines translated subtitle blocks back into the `.srt` format.
+1.  Identify the main reassembly function (e.g., `reassemble_srt`). This function likely performs CPU-bound operations (string formatting, list iteration) using the `srt` library.
+2.  Confirm that this function does not perform any I/O and therefore does not need to be `async def`. Its signature and implementation likely remain unchanged.
+
+**Debugging**
+Create a Python script named `tests/manual/test_core_logic_async.py`. This script should serve as a basic check for the adapted async functions and dependency passing (without requiring a running FastAPI server):
+1.  Import `asyncio`.
+2.  Import the `Settings` class from `src.config` and instantiate it (requires a valid `.env`).
+3.  Import the client initialization function from `src.translator.gemini_helper` and manually initialize a client instance using the settings.
+4.  Import the relevant async functions (e.g., `detect_context`, `translate_all_chunks`) from `src.translator.context_detector` and `src.translator.chunk_translator`.
+5.  Import the `SubtitleBlock` model from `src.translator.models`.
+6.  Create some sample `SubtitleBlock` data structured as required by the functions (list of lists of blocks).
+7.  Use `asyncio.run()` to execute a top-level `async def main():` function.
+8.  Inside `main()`, `await` calls to your adapted `detect_context` and `translate_all_chunks` functions, passing the manually created `Settings` instance, the manually initialized client instance, and the mock subtitle data.
+9.  Add basic print statements or assertions to observe output or check for exceptions. (Note: Actual API calls will be made if not mocked. Consider adding simple mock logic or using "mock" `speed_mode` if available to avoid hitting the real API during this basic check).
+
+Running this script helps verify that the async function signatures are correct, dependencies can be passed, and the basic async flow executes without immediate errors.

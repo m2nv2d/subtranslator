@@ -1,54 +1,65 @@
-# Task number and name: 3 - FastAPI Endpoints & Integration
+## Task 3: FastAPI Endpoints & Integration
 
-## Project Context
-This project is a web application that translates subtitle files (in `.srt` format) from their original language to a user-selected target language. It uses the Google Gemini AI for the translation process. The core translation logic involves parsing the SRT file into chunks, detecting the overall context, translating each chunk using the AI (potentially in parallel), and then reassembling the translated chunks back into a downloadable SRT file. The application needs a web interface to allow users to upload a file, select the target language and translation speed, and receive the translated file.
+**Project Context**
+This task involves creating the user-facing API endpoints for the subtitle translation application using the FastAPI framework. It builds directly upon the Pydantic models, configuration (`Settings`), and adapted core logic (async functions, Gemini client management) established in Tasks 1 and 2. The goal is to expose the application's functionality over HTTP, handling web requests, orchestrating the translation workflow, and returning responses.
 
-## Prerequisites
-- A FastAPI application instance exists in `src/main.py`.
-- Required libraries are installed: `fastapi`, `uvicorn`, `pydantic`, `jinja2`, `python-multipart`, `google-generativeai`, `srt`, `tenacity`, `aiofiles`.
-- Configuration is managed by a Pydantic `BaseSettings` model (let's call it `Settings`) in `src/config.py`, loaded automatically from environment variables or a `.env` file. This includes `target_languages: List[str]`.
-- A dependency function `get_settings_dependency` exists in `src/dependencies.py` that provides an instance of `Settings`.
-- A dependency function `get_gemini_client_dependency` exists in `src/dependencies.py` that provides a pre-initialized and configured `google.generativeai.Client` instance.
-- Core translation logic functions are available in the `src/translator/` directory:
-    - `src/translator/models.py`: Defines a Pydantic model `SubtitleBlock` with fields like `index`, `start`, `end`, `content`, `translated_content`.
-    - `src/translator/parser.py`: Contains `parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[models.SubtitleBlock]]`. It takes a file path string and returns a list of lists (chunks) of `SubtitleBlock` objects. It raises `translator.exceptions.ValidationError` or `translator.exceptions.ParsingError` on failure. Assume standard exceptions like `FileNotFoundError` might also occur if the path is invalid.
-    - `src/translator/context_detector.py`: Contains `async def detect_context(sub: List[List[models.SubtitleBlock]], speed_mode: str, genai_client: genai.client.Client, config: Settings) -> str`. It takes the chunked subtitles, speed mode ("fast" or "normal"), the Gemini client instance, and the application settings, returning a context string. It might raise exceptions related to API calls (e.g., `google.api_core.exceptions` or custom ones like `translator.exceptions.ContextDetectionError`) or `tenacity.RetryError`.
-    - `src/translator/chunk_translator.py`: Contains `async def translate_all_chunks(context: str, sub: List[List[models.SubtitleBlock]], target_lang: str, speed_mode: str, genai_client: genai.client.Client, config: Settings) -> None`. This function modifies the passed `SubtitleBlock` objects *in-place*, setting their `translated_content` field. It takes the context, chunks, target language string, speed mode, Gemini client, and settings. It uses `asyncio` internally and might raise exceptions related to API calls, JSON parsing (`translator.exceptions.GenAIParsingError`), or general processing (`translator.exceptions.ChunkTranslationError`), or `tenacity.RetryError`.
-    - `src/translator/reassembler.py`: Contains `reassemble_srt(sub: List[List[models.SubtitleBlock]]) -> bytes`. Takes the (potentially modified) chunks and returns the complete translated SRT content as bytes.
-- Static assets (`style.css`, `app.js`) are located in `src/static/`.
-- The main HTML template (`index.html`) is located in `src/templates/`.
+**Prerequisites**
+*   A working FastAPI project setup (`src/main.py` with a `FastAPI` instance).
+*   Completed code from Task 1 (`src/config.py::Settings`, `src/translator/models.py::SubtitleBlock`) and Task 2 (`src/dependencies.py` with `get_settings` and `get_gemini_client` dependencies, adapted async functions in `src/translator/`, lifespan manager in `src/main.py` for client initialization).
+*   Required libraries installed: `fastapi`, `uvicorn`, `jinja2`, `python-multipart`, `aiofiles`.
+*   An HTML template file located at `src/templates/index.html` (similar to the one described in the original Flask design).
+*   Static assets (CSS, JS) located within a `src/static/` directory.
 
-## Subtask 1: Configure Static Files and Templates
-In `src/main.py`, configure the FastAPI application to:
-- Serve static files from the `src/static/` directory under the path `/static`.
-- Use Jinja2 for templating, loading templates from the `src/templates/` directory. Initialize a `Jinja2Templates` instance for this purpose.
+**Subtask 1: Configure Static Files and Templates**
+In your main application file (`src/main.py`), configure FastAPI to serve static files and use Jinja2 for templating.
+1.  Mount the static files directory: Use `app.mount("/static", StaticFiles(directory="src/static"), name="static")`. Ensure the `StaticFiles` class is imported from `starlette.staticfiles`.
+2.  Configure Jinja2 templates: Instantiate `Jinja2Templates` pointing to the `src/templates` directory (e.g., `templates = Jinja2Templates(directory="src/templates")`). Ensure `Jinja2Templates` is imported from `fastapi.templating`.
 
-## Subtask 2: Implement `GET /` Endpoint
-Create an asynchronous route handler function for `GET /` requests in `src/main.py`.
-- This route should depend on the `Settings` provided by `get_settings_dependency`.
-- It needs to render the `src/templates/index.html` template.
-- Pass the `request` object and the list of `target_languages` (obtained from the injected `Settings`) to the template context so that the language selection dropdown can be populated dynamically.
+**Subtask 2: Implement GET / Route**
+Create the main landing page route that serves the HTML interface.
+1.  Define an `async` function for the `GET` request to the root path (`/`). Use the `@app.get("/")` decorator.
+2.  This function should accept `request: Request` (imported from `fastapi`) as a parameter.
+3.  Inject the application settings using dependency injection: add a parameter `settings: Settings = Depends(get_settings)` (import `Depends` from `fastapi`, `Settings` from `src.config`, and `get_settings` from `src.dependencies`).
+4.  Inside the function, retrieve the list of target languages from the injected `settings` object (`settings.target_languages`).
+5.  Return a `TemplateResponse` using the configured `templates` object. Pass the template name (`"index.html"`), and a context dictionary containing at least `{"request": request, "languages": settings.target_languages}`.
 
-## Subtask 3: Implement `POST /translate` Endpoint Core Logic
-Create an asynchronous route handler function for `POST /translate` requests in `src/main.py`.
-- This route must accept `multipart/form-data` requests.
-- Define parameters using FastAPI's type hints and utilities:
-    - An uploaded file, named `file` (`UploadFile` from `fastapi`).
-    - A form field named `target_lang` (string).
-    - A form field named `speed_mode` (string).
-- Inject dependencies for `Settings` (using `get_settings_dependency`) and the `genai.Client` (using `get_gemini_client_dependency`).
-- Perform initial validation: Check if the received `target_lang` string exists within the `target_languages` list from the injected `Settings`. If not, raise an appropriate HTTP exception (e.g., 400 Bad Request) with a clear error message. Also validate the `speed_mode` if necessary (e.g., ensuring it's "fast" or "normal").
-- Create a temporary directory using the `tempfile` module.
-- Asynchronously read the content of the uploaded `file` and save it to a temporary file (with a secure filename, e.g., using `werkzeug.utils.secure_filename` or similar logic) within the created temporary directory. Use `aiofiles` for asynchronous file writing. Remember the full path to this temporary file.
-- Call the `parse_srt` function (from `src/translator/parser.py`), passing the temporary file path and the `chunk_max_blocks` value from the `Settings`. Store the resulting list of chunks.
-- Call the `detect_context` function (from `src/translator/context_detector.py`), passing the chunks, the received `speed_mode`, the injected `genai.Client`, and the injected `Settings`. Store the resulting context string.
-- Call the `translate_all_chunks` function (from `src/translator/chunk_translator.py`), passing the context, the chunks, the received `target_lang`, the `speed_mode`, the injected `genai.Client`, and the injected `Settings`. This function modifies the chunks in place.
-- Call the `reassemble_srt` function (from `src/translator/reassembler.py`), passing the modified chunks. Store the resulting bytes.
+**Subtask 3: Implement POST /translate Route**
+Create the core API endpoint responsible for handling subtitle file uploads and translation requests.
+1.  Define an `async` function for the `POST` request to the `/translate` path. Use the `@app.post("/translate")` decorator.
+2.  Define the function parameters to accept the required inputs using FastAPI's parameter types:
+    *   `file: UploadFile = File(...)`: For the uploaded `.srt` file (import `UploadFile` and `File` from `fastapi`).
+    *   `target_lang: str = Form(...)`: For the target language selected by the user (import `Form` from `fastapi`).
+    *   `speed_mode: str = Form(...)`: For the selected speed mode.
+    *   Inject dependencies: `settings: Settings = Depends(get_settings)` and `genai_client = Depends(get_gemini_client)` (ensure the client type hint matches the actual client object type, e.g., `genai.Client` or `genai.GenerativeModel`).
+3.  **Input Validation:**
+    *   Immediately after receiving the parameters, check if the provided `target_lang` string is present within the `settings.target_languages` list. If not, raise an `HTTPException` (imported from `fastapi`) with a `status_code=400` (Bad Request) and an appropriate detail message (e.g., "Invalid target language specified").
+    *   Optionally, add validation for `speed_mode` to ensure it's one of the expected values (e.g., "normal", "fast", "mock"). Raise a 400 `HTTPException` if invalid.
+4.  **Temporary File Handling:**
+    *   Use the `tempfile` module (e.g., `tempfile.mkdtemp()`) to create a secure temporary directory.
+    *   Construct the full path for a temporary file within that directory (e.g., using `os.path.join`).
+    *   Use the `aiofiles` library within an `async with aiofiles.open(temp_file_path, 'wb') as temp_f:` block to asynchronously write the contents of the uploaded file: `content = await file.read()`, followed by `await temp_f.write(content)`. Remember to handle potential file read errors.
+5.  **Orchestration (Inside a `try` block):**
+    *   Call the synchronous `parse_srt` function (from `src.translator.parser`) passing the `temp_file_path` and `settings.chunk_max_blocks`. Store the resulting list of subtitle chunks. Handle potential `ParsingError` or `ValidationError` exceptions raised by the parser (consider re-raising as appropriate HTTPExceptions or letting specific exception handlers catch them later).
+    *   Call the asynchronous `detect_context` function (from `src.translator.context_detector`), passing the subtitle chunks, `speed_mode`, the injected `genai_client`, and the `settings`. Use `await` for the call.
+    *   Call the asynchronous `translate_all_chunks` function (from `src.translator.chunk_translator`), passing the detected context, subtitle chunks, `target_lang`, `speed_mode`, the injected `genai_client`, and the `settings`. Use `await`. This function modifies the chunks in place.
+    *   Call the synchronous `reassemble_srt` function (from `src.translator.reassembler`), passing the modified subtitle chunks. Store the returned bytes.
+6.  **Response Generation:**
+    *   Generate a suitable download filename for the translated file. Use the original filename stem (e.g., using `pathlib.Path(file.filename).stem`) combined with the target language (e.g., `f"{original_stem}_{target_lang}.srt"`).
+    *   Create an in-memory byte stream from the reassembled bytes: `buffer = io.BytesIO(translated_srt_bytes)` (import `io`).
+    *   Return a `StreamingResponse` (imported from `fastapi.responses`). Pass the `buffer` as the content. Set the `media_type` to `"text/srt"`. Add a `headers` dictionary with the `Content-Disposition` set for attachment and the generated filename (e.g., `{"Content-Disposition": f"attachment; filename={download_filename}"}`).
+7.  **Cleanup (Inside a `finally` block):**
+    *   Ensure the temporary directory created earlier and all its contents are reliably removed, regardless of whether the translation succeeded or failed. Use `os.remove` for the temporary file and `os.rmdir` for the directory, or preferably `shutil.rmtree(temp_dir_path)` (import `shutil`) to handle non-empty directories robustly. Place this cleanup logic within a `finally` clause associated with the `try` block that encompasses the temporary file creation and processing steps.
 
-## Subtask 4: Implement `POST /translate` Endpoint Response
-- Continuing within the `POST /translate` route handler:
-- Generate a suitable download filename for the translated SRT file. It should incorporate the original filename stem and the target language (e.g., `original_stem_TargetLang.srt`). Use `pathlib` to help extract the stem from the original `file.filename`.
-- Return the translated SRT bytes to the client. Use FastAPI's `StreamingResponse`. Wrap the bytes in an `io.BytesIO` object. Set the `media_type` to `"text/srt"`. Set the `Content-Disposition` header to `attachment; filename="your_generated_filename.srt"` to trigger a download in the browser.
-
-## Subtask 5: Implement Cleanup
-- Still within the `POST /translate` route handler, ensure that the temporary directory created earlier (and the temporary file within it) are reliably deleted after the request is processed, regardless of whether an error occurred during processing. Use a `try...finally` block around the core logic (parsing, context detection, translation, reassembly, response generation) to achieve this. Use appropriate functions (like `os.remove`, `shutil.rmtree`, or `os.rmdir`) within the `finally` block for cleanup.
+**Debugging**
+1.  Run the FastAPI application using Uvicorn: `uvicorn src.main:app --reload`.
+2.  Open your web browser and navigate to the root URL (e.g., `http://127.0.0.1:8000`). Verify the page loads and the language dropdown is populated correctly.
+3.  Use the web form to upload a valid `.srt` file, select a language and speed mode, and submit. Check if the translation process completes and a file download is triggered. Use your browser's developer tools (Network tab) to inspect the request and response.
+4.  For more direct API testing, use a tool like `curl` or HTTPie to send a `POST` request to the `/translate` endpoint. Ensure you construct a multipart/form-data request including the `file`, `target_lang`, and `speed_mode` fields. Example (conceptual using `curl`):
+    ```bash
+    curl -X POST http://127.0.0.1:8000/translate \
+      -F "file=@/path/to/your/subtitle.srt" \
+      -F "target_lang=Vietnamese" \
+      -F "speed_mode=fast" \
+      -o output.srt
+    ```
+    Check the `output.srt` file and any error messages returned by the server.

@@ -1,38 +1,43 @@
-## Task 1: Configuration & Models Refactor for FastAPI
+## Task 1: Configuration & Models
 
-### Project Context
-This task is part of migrating a Flask-based web application to FastAPI. The application translates subtitle files (specifically, `.srt` format) using an external AI service (Google Gemini). The goal of *this specific task* is to refactor the data models and configuration loading mechanism to use Pydantic, aligning with common FastAPI practices, replacing the previous custom approach.
+**Project Context**
+This project is a web application that translates subtitle files (specifically `.srt` format) using an external Generative AI service (Google Gemini). This task focuses on setting up the data models and configuration management needed for the application using Pydantic, preparing for integration with the FastAPI framework.
 
-### Prerequisites
-*   Access to the project's source code repository.
-*   Familiarity with Python, Pydantic (`BaseModel`, `BaseSettings`), and Python type hinting.
-*   Access to the `docs/v2-flask/TECHNICAL_DESIGN.md` document provided previously. You will need to refer to the sections describing `src/translator/models.py` and `src/config_loader.py` for the specifications of the original models and configuration variables.
+**Prerequisites**
+Ensure you have access to and familiarity with the following Python libraries:
+*   Pydantic (for data validation and modeling)
+*   Pydantic-Settings (for loading configuration from environment variables and `.env` files)
+*   python-dotenv (implicitly used by Pydantic-Settings to load `.env` files)
 
-### Subtask 1: Define Pydantic Data Model (`SubtitleBlock`)
-*   **Objective:** Convert the existing data transfer object used for representing a single subtitle entry into a Pydantic model.
-*   **Location:** Modify the file `src/translator/models.py`.
-*   **Details:**
-    *   Consult the original `docs/v2-flask/TECHNICAL_DESIGN.md` document's definition for the `SubtitleBlock` class under the `src/translator/models.py` section. Also, review the current implementation in the `src/translator/models.py` file within the codebase itself to capture any potential discrepancies from the document.
-    *   Define a Pydantic `BaseModel` named `SubtitleBlock` within `src/translator/models.py`.
-    *   Ensure this model includes fields matching the original specification: `index` (integer), `start` (datetime object), `end` (datetime object), `content` (string), and `translated_content` (optional string, defaulting to `None`). Use appropriate Python type hints for each field.
-    *   The previous implementation (likely a dataclass) should be replaced by this Pydantic model.
+**Subtask 1: Define Core Data Model**
+Locate the existing data structures defined in `src/translator/models.py`. Your goal is to redefine the `SubtitleBlock` structure as a Pydantic `BaseModel`. This model should represent a single subtitle entry and must include the following fields with their specified types:
+*   `index`: `int`
+*   `start`: `datetime` (from the `datetime` standard library module)
+*   `end`: `datetime`
+*   `content`: `str`
+*   `translated_content`: `Optional[str]` (using `typing.Optional`), defaulting to `None`.
 
-### Subtask 2: Implement Pydantic Settings Configuration
-*   **Objective:** Replace the custom configuration loading script (`src/config_loader.py`) with Pydantic's `BaseSettings` for automated loading and validation from environment variables or a `.env` file.
-*   **Location:** Create a new file named `src/config.py`. The old `src/config_loader.py` and the `Config` model previously in `src/translator/models.py` will become obsolete.
-*   **Details:**
-    *   Refer to the `docs/v2-flask/TECHNICAL_DESIGN.md` document's description of `src/config_loader.py` and the `Config` model definition (previously in `src/translator/models.py`). Examine the current `src/config_loader.py` in the codebase and any existing `.env` file in the project root to understand the variable names and loading logic.
-    *   In `src/config.py`, create a class named `Settings` that inherits from `pydantic_settings.BaseSettings`.
-    *   Define fields within the `Settings` class to hold all configuration parameters previously managed by `config_loader.py`. These must include:
-        *   `gemini_api_key`: `str` (This is mandatory).
-        *   `target_languages`: `List[str]`
-        *   `chunk_max_blocks`: `int`
-        *   `retry_max_attempts`: `int`
-        *   `log_level`: `str`
-    *   Configure `BaseSettings` (if necessary, often automatic) to load values from environment variables, using a `.env` file located in the project root (one level above the `src` directory) as a source.
-    *   Implement validation logic *within the `Settings` model using Pydantic validators*, mirroring the requirements outlined in the original design document for `config_loader.py`:
-        *   `TARGET_LANGUAGES`: Should handle a comma-separated input string, strip whitespace, filter empty entries, and default to `["Vietnamese", "French"]` if parsing fails or the variable is absent.
-        *   `CHUNK_MAX_BLOCKS`: Must be a positive integer, defaulting to `100`.
-        *   `RETRY_MAX_ATTEMPTS`: Must be a non-negative integer, defaulting to `6`.
-        *   `LOG_LEVEL`: Must be a valid uppercase log level string from the set `["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]`, defaulting to `"INFO"`.
-    *   Ensure required fields like `gemini_api_key` are implicitly or explicitly marked as mandatory (Pydantic usually handles this based on lack of defaults or `Optional` type hint).
+You can remove or ignore the original `Config` class definition found in this file, as it will be replaced in the next step. Ensure the new Pydantic `SubtitleBlock` model resides in `src/translator/models.py`.
+
+**Subtask 2: Implement Configuration Settings**
+Create a new file named `src/config.py`. In this file, implement the application's configuration loading using Pydantic-Settings.
+Define a class named `Settings` that inherits from `pydantic_settings.BaseSettings`. This class will automatically load configuration values from environment variables and a `.env` file located in the project's root directory (one level above the `src` directory).
+
+The `Settings` class must define the following configuration fields, incorporating validation and default values as described:
+*   `gemini_api_key`: A `str` representing the API key for the Gemini service. This field is mandatory and should not have a default value; loading should fail if it's missing.
+*   `target_languages`: A `List[str]` containing the full names of languages the application can translate subtitles into (e.g., `["Vietnamese", "French"]`). This should be loaded from an environment variable (e.g., `TARGET_LANGUAGES="Vietnamese,French"`). Implement logic (e.g., using Pydantic validators or pre-processors) to parse a comma-separated string, strip whitespace from each language name, filter out any empty entries resulting from parsing, and default to `["Vietnamese", "French"]` if the environment variable is missing, empty, or contains invalid formatting.
+*   `chunk_max_blocks`: An `int` specifying the maximum number of subtitle blocks to include in a single chunk for processing. Apply validation to ensure this value is a positive integer. Set the default value to `100`.
+*   `retry_max_attempts`: An `int` defining the maximum number of retry attempts for API calls. Apply validation to ensure this value is a non-negative integer (zero or greater). Set the default value to `6`.
+*   `log_level`: A `str` indicating the logging level for the application. Apply validation to ensure the value is one of the following uppercase strings: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`. Set the default value to `"INFO"`.
+
+Configure the `Settings` class (via its `model_config` or `Config` inner class, depending on your Pydantic version) to read from a `.env` file. This new `Settings` class effectively replaces the functionality previously handled by `src/config_loader.py` and the old `Config` data class.
+
+**Subtask 3: Create Configuration Dependency Function**
+Create a new file named `src/dependencies.py`. Inside this file, define a simple synchronous function, for example named `get_settings`, that takes no arguments. This function's sole purpose is to instantiate the `Settings` class (defined in `src/config.py`) and return the instance. This function will later be used by FastAPI to inject the application settings into route handlers.
+
+**Debugging**
+Create a simple Python script named `test_config.py` inside the `tests/manual/` directory. This script should:
+1.  Import the `Settings` class from `src.config`.
+2.  Attempt to instantiate the `Settings` class.
+3.  Print the values of all attributes of the created settings instance (e.g., `settings.gemini_api_key`, `settings.target_languages`, etc.).
+Run this script directly to verify that configuration is loaded correctly from your `.env` file and that defaults and validation logic are working as expected. You will need a `.env` file in the project root with at least `GEMINI_API_KEY` defined for the script to succeed without errors.
