@@ -4,15 +4,14 @@ import sys
 from pathlib import Path
 import os
 
-# Add project root to sys.path
+# Add project root's src to sys.path
 project_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(project_root))
+src_root = project_root / 'src'
+sys.path.insert(0, str(src_root))
 
-from src.config_loader import load_config
-from src.context_detector import detect_context
-from src.exceptions import ContextDetectionError, ParsingError
-from src.parser import parse_srt
-from src.gemini_helper import init_genai_client
+from config_loader import load_config
+from translator import init_genai_client, parse_srt, detect_context
+from translator import ContextDetectionError, ParsingError
 
 # Basic logging setup for the script
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')

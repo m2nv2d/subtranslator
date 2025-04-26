@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 import logging
 
-# Add project root to sys.path
+# Add project root's src to sys.path
 project_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(project_root))
+src_root = project_root / 'src'
+sys.path.insert(0, str(src_root))
 
 # Configure logging for the test script itself if needed
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s') # Optional: uncomment if script-specific logging needed
@@ -14,9 +15,9 @@ print(f"Project root added to sys.path: {project_root}")
 print("Attempting to import from src...")
 
 try:
-    from src.config_loader import load_config
+    from config_loader import load_config
     # Import Config for potential type checking or direct use later, though load_config handles instantiation
-    from src.models import Config
+    from translator import Config
     print("Import successful.")
 except ImportError as e:
     print(f"ERROR: Failed to import required modules: {e}", file=sys.stderr)
@@ -30,7 +31,7 @@ print("\nAttempting to load configuration using load_config()...")
 
 try:
     # Call the function to load configuration
-    config = load_config()
+    config: Config = load_config()
 
     # Print the loaded configuration object
     print("\n--- Loaded Configuration ---")

@@ -3,13 +3,12 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add project root to sys.path
+# Add project root's src to sys.path
 project_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(project_root))
+src_root = project_root / 'src'
+sys.path.insert(0, str(src_root))
 
-from src.models import Config
-from src.exceptions import GenAIClientInitError
-from src.gemini_helper import init_genai_client
+from translator import init_genai_client, Config, GenAIClientInitError
 
 def main():
     """Loads config, initializes Gemini client, and prints the result."""

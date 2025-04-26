@@ -1,3 +1,7 @@
+class ConfigError(Exception):
+    """Raised when configuration loading fails."""
+    pass
+
 class ValidationError(Exception):
     """Raised when input validation fails."""
     pass

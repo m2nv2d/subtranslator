@@ -3,12 +3,13 @@ from pathlib import Path
 import sys
 import os
 
-# Add project root to sys.path
+# Add project root's src to sys.path
 project_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(project_root))
+src_root = project_root / 'src'
+sys.path.insert(0, str(src_root))
 
-from src.parser import parse_srt
-from src.exceptions import ValidationError, ParsingError
+from translator import parse_srt
+from translator import ValidationError, ParsingError
 
 def main():
     parser = argparse.ArgumentParser(description="Debug script for SRT parser.")

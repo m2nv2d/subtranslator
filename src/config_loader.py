@@ -2,11 +2,10 @@
 import os
 import sys
 import logging
-from typing import List
 from dotenv import load_dotenv
 from pathlib import Path
 
-from models import Config
+from translator import Config
 
 def load_config() -> Config:
     """

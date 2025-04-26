@@ -12,12 +12,23 @@ from tenacity import RetryError
 from werkzeug.exceptions import HTTPException, InternalServerError
 from werkzeug.utils import secure_filename
 
-import chunk_translator, config_loader, context_detector, exceptions, gemini_helper, models, parser, reassembler
+import config_loader
+
+from translator import init_genai_client, parse_srt, detect_context, reassemble_srt, translate_all_chunks, Config, SubtitleBlock
+
+from translator import (
+    ConfigError,
+    ValidationError,
+    ParsingError,
+    ContextDetectionError,
+    ChunkTranslationError,
+    GenAIClientInitError,
+)
 
 # Load configuration
 try:
-    config = config_loader.load_config()
-except exceptions.ConfigError as e:
+    config: Config = config_loader.load_config()
+except ConfigError as e:
     logging.basicConfig(level=logging.ERROR)
     logging.critical(f"Failed to load configuration: {e}")
     # Exit if config fails to load, as the app cannot run
@@ -44,9 +55,9 @@ def favicon():
 # AI Client Initialization
 genai_client: genai.client.Client | None = None
 try:
-    genai_client = gemini_helper.init_genai_client(config)
+    genai_client = init_genai_client(config)
     logger.info("Generative AI client initialized successfully.")
-except exceptions.GenAIClientInitError as e:
+except GenAIClientInitError as e:
     logger.critical(f"Failed to initialize Generative AI client: {e}")
     # Raising RuntimeError to halt startup if the client is essential
     raise RuntimeError(f"Critical component failure: {e}") from e
@@ -55,29 +66,29 @@ except Exception as e:
     raise RuntimeError(f"Unexpected critical component failure: {e}") from e
 
 # Application-Wide Error Handling
-@app.errorhandler(exceptions.ValidationError)
-def handle_validation_error(error: exceptions.ValidationError):
+@app.errorhandler(ValidationError)
+def handle_validation_error(error: ValidationError):
     logger.warning(f"Validation Error: {error}")
     response = jsonify(error=str(error))
     response.status_code = 400  # Bad Request
     return response
 
-@app.errorhandler(exceptions.ParsingError)
-def handle_parsing_error(error: exceptions.ParsingError):
+@app.errorhandler(ParsingError)
+def handle_parsing_error(error: ParsingError):
     logger.error(f"Parsing Error: {error}", exc_info=True)
     response = jsonify(error=str(error))
     response.status_code = 422  # Unprocessable Entity
     return response
 
-@app.errorhandler(exceptions.ContextDetectionError)
-def handle_context_detection_error(error: exceptions.ContextDetectionError):
+@app.errorhandler(ContextDetectionError)
+def handle_context_detection_error(error: ContextDetectionError):
     logger.error(f"Context Detection Error: {error}", exc_info=True)
     response = jsonify(error=str(error))
     response.status_code = 500 # Internal Server Error (as it's part of backend processing)
     return response
 
-@app.errorhandler(exceptions.ChunkTranslationError)
-def handle_chunk_translation_error(error: exceptions.ChunkTranslationError):
+@app.errorhandler(ChunkTranslationError)
+def handle_chunk_translation_error(error: ChunkTranslationError):
     logger.error(f"Chunk Translation Error: {error}", exc_info=True)
     response = jsonify(error=str(error))
     response.status_code = 500 # Internal Server Error
@@ -141,16 +152,16 @@ def translate_srt():
     # Input Processing
     if 'file' not in request.files:
         logger.warning("Translation request failed: No file part.")
-        raise exceptions.ValidationError("No file part in the request.")
+        raise ValidationError("No file part in the request.")
 
     file = request.files['file']
     if file.filename == '':
         logger.warning("Translation request failed: No selected file.")
-        raise exceptions.ValidationError("No file selected.")
+        raise ValidationError("No file selected.")
 
     if not file or not file.filename.lower().endswith('.srt'):
          logger.warning(f"Translation request failed: Invalid file type '{file.filename}'.")
-         raise exceptions.ValidationError("Invalid file type. Please upload an SRT file.")
+         raise ValidationError("Invalid file type. Please upload an SRT file.")
 
     # Retrieve form data
     target_lang = request.form.get('target_lang')
@@ -160,10 +171,10 @@ def translate_srt():
     # Validate target_lang
     if not target_lang:
         logger.warning("Translation request failed: Target language not specified.")
-        raise exceptions.ValidationError("Target language must be specified.")
+        raise ValidationError("Target language must be specified.")
     if target_lang not in config.target_languages:
         logger.warning(f"Translation request failed: Invalid target language '{target_lang}'.")
-        raise exceptions.ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(config.target_languages)}")
+        raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(config.target_languages)}")
 
     # Secure filename and prepare temporary file path
     original_filename = secure_filename(file.filename)
@@ -178,7 +189,7 @@ def translate_srt():
 
         # 1. Parse SRT
         logger.debug("Parsing SRT file...")
-        subtitle_chunks: list[list[models.SubtitleBlock]] = parser.parse_srt(
+        subtitle_chunks: list[list[SubtitleBlock]] = parse_srt(
             temp_file_path, config.chunk_max_blocks
         )
         logger.info(f"Parsed SRT into {len(subtitle_chunks)} chunk(s).")
@@ -186,14 +197,14 @@ def translate_srt():
         # 2. Detect Context
         logger.debug("Detecting context...")
         # Pass speed_mode to allow mock implementation if needed
-        context: str = context_detector.detect_context(
+        context: str = detect_context(
             subtitle_chunks, speed_mode, genai_client, config
         )
         logger.info(f"Detected context: '{context[:100]}...'")
 
         # 3. Translate Chunks
         logger.debug("Translating chunks...")
-        asyncio.run(chunk_translator.translate_all_chunks(
+        asyncio.run(translate_all_chunks(
             context=context,
             sub=subtitle_chunks,
             target_lang=target_lang,
@@ -204,7 +215,7 @@ def translate_srt():
         logger.info("Finished translating chunks.")
 
         # 4. Reassemble SRT
-        reassembled_bytes: bytes = reassembler.reassemble_srt(subtitle_chunks)
+        reassembled_bytes: bytes = reassemble_srt(subtitle_chunks)
         logger.info("Reassembled translated SRT.")
 
         # Response Generation

@@ -36,7 +36,7 @@ Browser (Client)
 Flask App (`src/app.py` - Single Process)
 │  [Startup]
 │  • `src/config_loader.py`: Loads & validates .env -> `Config` object
-│  • `src/gemini_helper.py`: Initializes single shared `genai.Client` instance
+│  • `src/translator/gemini_helper.py`: Initializes single shared `genai.Client` instance
 │  • Configures logging, registers error handlers
 │
 ├─ Route `/` (GET):
@@ -46,13 +46,13 @@ Flask App (`src/app.py` - Single Process)
 │   • Check: Verify `genai_client` initialized successfully.
 │   • Receive `file`, `target_lang`, `speed_mode`. Validate `target_lang`.
 │   • Save uploaded file to temporary location.
-│   • `src/parser.py`: Validate temp file (ext, size), parse using `srt`, chunk into `List[List[SubtitleBlock]]`.
-│   • `src/context_detector.py`:
+│   • `src/translator/parser.py`: Validate temp file (ext, size), parse using `srt`, chunk into `List[List[SubtitleBlock]]`.
+│   • `src/tranlator/context_detector.py`:
 │     • Takes first chunk, constructs prompt.
 │     • Calls **passed `genai_client`** (selects model based on `speed_mode`).
 │     • Uses `tenacity` for retries (hardcoded attempts).
 │     • Returns context string (e.g., "cooking tutorial").
-│   • `src/chunk_translator.py`:
+│   • `src/translator/chunk_translator.py`:
 │     • Uses `asyncio.run()` to call `translate_all_chunks`.
 │     • `translate_all_chunks` uses `asyncio.TaskGroup` to run `_translate_single_chunk` concurrently for each chunk.
 │     • `_translate_single_chunk`:
@@ -61,7 +61,7 @@ Flask App (`src/app.py` - Single Process)
 │       • Uses `tenacity` for retries (hardcoded attempts).
 │       • Parses JSON response, updates `SubtitleBlock.translated_content` in-place.
 │       • Handles API/parsing errors.
-│   • `src/reassembler.py`:
+│   • `src/translator/reassembler.py`:
 │     • Uses `srt.compose` to merge translated/original blocks into SRT format string.
 │     • Encodes string to bytes.
 │   • `src/app.py`:
@@ -97,13 +97,13 @@ Flask App (`src/app.py` - Single Process)
 
 ## 6. Major System Components
 *   **`src/config_loader.py`:** Loads and validates configuration from environment variables/.env into a `models.Config` object.
-*   **`src/exceptions.py`:** Defines custom application-specific exception classes (e.g., `ParsingError`, `ChunkTranslationError`).
-*   **`src/models.py`:** Contains data structures, notably `SubtitleBlock` (representing a single subtitle entry) and `Config` (holding application configuration).
-*   **`src/parser.py`:** Validates uploaded SRT file (path-based), parses its content using the `srt` library, and divides it into chunks of `SubtitleBlock` objects.
-*   **`src/gemini_helper.py`:** Responsible solely for initializing the shared `genai.Client` instance using the API key from the `Config`.
-*   **`src/context_detector.py`:** Determines a high-level context for the subtitles by sending the text from the first chunk to the Gemini API via the passed `genai_client`. Includes retry logic (`tenacity`).
-*   **`src/chunk_translator.py`:** Orchestrates the parallel translation of subtitle chunks using `asyncio.TaskGroup`. Each task calls the Gemini API (via the passed `genai_client`) requesting JSON output, handles retries (`tenacity`), parses the response, and updates the `SubtitleBlock` objects.
-*   **`src/reassembler.py`:** Takes the list of (potentially translated) `SubtitleBlock` chunks and uses the `srt` library to compose them back into a single SRT formatted byte stream.
+*   **`src/translator/exceptions.py`:** Defines custom application-specific exception classes (e.g., `ParsingError`, `ChunkTranslationError`).
+*   **`src/translator/models.py`:** Contains data structures, notably `SubtitleBlock` (representing a single subtitle entry) and `Config` (holding application configuration).
+*   **`src/translator/parser.py`:** Validates uploaded SRT file (path-based), parses its content using the `srt` library, and divides it into chunks of `SubtitleBlock` objects.
+*   **`src/translator/gemini_helper.py`:** Responsible solely for initializing the shared `genai.Client` instance using the API key from the `Config`.
+*   **`src/tranlator/context_detector.py`:** Determines a high-level context for the subtitles by sending the text from the first chunk to the Gemini API via the passed `genai_client`. Includes retry logic (`tenacity`).
+*   **`src/translator/chunk_translator.py`:** Orchestrates the parallel translation of subtitle chunks using `asyncio.TaskGroup`. Each task calls the Gemini API (via the passed `genai_client`) requesting JSON output, handles retries (`tenacity`), parses the response, and updates the `SubtitleBlock` objects.
+*   **`src/translator/reassembler.py`:** Takes the list of (potentially translated) `SubtitleBlock` chunks and uses the `srt` library to compose them back into a single SRT formatted byte stream.
 *   **`src/app.py`:** The main Flask application file. Initializes the app, configuration, logging, and the shared `genai.Client`. Defines routes (`/`, `/translate`), orchestrates the workflow by calling other modules, manages the temporary upload file, handles errors via decorators, and sends responses.
 *   **`templates/index.html`:** The Jinja2 template for the main user interface, including the upload form and status display area. Receives `target_languages` from `app.py`.
 *   **`static/js/app.js`:** Client-side JavaScript handling form submission (via `fetch`), validation, UI updates (status messages, button states), and triggering the download of the translated file.

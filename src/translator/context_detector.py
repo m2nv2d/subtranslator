@@ -3,10 +3,10 @@ from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 from google import genai
-from gemini_helper import FAST_MODEL, NORMAL_MODEL
 
-from exceptions import ContextDetectionError
-from models import Config, SubtitleBlock
+from translator.gemini_helper import FAST_MODEL, NORMAL_MODEL
+from translator.exceptions import ContextDetectionError
+from translator.models import Config, SubtitleBlock
 
 logger = logging.getLogger(__name__)
 
@@ -66,4 +66,4 @@ def detect_context(
 
     else:
         logger.error(f"Invalid speed_mode: {speed_mode}")
-        raise ValueError(f"Invalid speed_mode: {speed_mode}. Must be 'mock', 'fast', or 'normal'.")
+        raise ContextDetectionError(f"Invalid speed_mode: {speed_mode}. Must be 'mock', 'fast', or 'normal'.")
