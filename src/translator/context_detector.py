@@ -1,23 +1,34 @@
 import logging
 from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+from functools import wraps
 
 from google import genai
 
-from translator.gemini_helper import FAST_MODEL, NORMAL_MODEL
 from translator.exceptions import ContextDetectionError
 from translator.models import Config, SubtitleBlock
 
 logger = logging.getLogger(__name__)
 
+def configurable_retry(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        # Extract config from the function arguments
+        config = kwargs.get('config') or args[3]
+        
+        @retry(
+            stop=stop_after_attempt(config.retry_max_attempts),
+            wait=wait_fixed(1),
+            retry=retry_if_exception_type(Exception),
+            reraise=True
+        )
+        def wrapped_f(*args, **kwargs):
+            return f(*args, **kwargs)
+        
+        return wrapped_f(*args, **kwargs)
+    return wrapper
 
-@retry(
-    stop=stop_after_attempt(3), # Default, will be overridden by config if available
-    wait=wait_fixed(1),
-    retry=retry_if_exception_type(Exception), # Broadly retry on exceptions for now
-    reraise=True
-)
-
+@configurable_retry
 def detect_context(
     sub: List[List[SubtitleBlock]],
     speed_mode: str,
@@ -52,16 +63,11 @@ def detect_context(
         request_prompt = f"{content}"
 
         # Call GenAI
-        if speed_mode == "fast":
-            detected_context = genai_client.models.generate_content(
-                model=FAST_MODEL,
+        model = config.fast_model if speed_mode == "fast" else config.normal_model
+        detected_context = genai_client.models.generate_content(
+                model=model,
                 contents=[system_prompt, request_prompt]
-            ).text
-        else:
-            detected_context = genai_client.models.generate_content(
-                model=NORMAL_MODEL,
-                contents=[system_prompt, request_prompt]
-            ).text
+        ).text
         return detected_context
 
     else:

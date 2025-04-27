@@ -3,9 +3,6 @@ from google import genai
 from translator.exceptions import GenAIClientInitError
 from translator.models import Config
 
-FAST_MODEL = "gemini-2.5-flash-preview-04-17"
-NORMAL_MODEL = "gemini-2.5-pro-preview-03-25"
-
 def init_genai_client(config: Config) -> genai.client.Client | None:
     """Initializes and returns a Google Generative AI client.
 

@@ -60,17 +60,21 @@ templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=templates_path)
 
 # AI Client Initialization
-genai_client: genai.client.Client | None = None
-try:
-    genai_client = init_genai_client(config)
-    logger.info("Generative AI client initialized successfully.")
-except GenAIClientInitError as e:
-    logger.critical(f"Failed to initialize Generative AI client: {e}")
-    # Raising RuntimeError to halt startup if the client is essential
-    raise RuntimeError(f"Critical component failure: {e}") from e
-except Exception as e:
-    logger.critical(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
-    raise RuntimeError(f"Unexpected critical component failure: {e}") from e
+if config.ai_provider == "google-gemini":
+    genai_client: genai.client.Client | None = None
+    try:
+        genai_client = init_genai_client(config)
+        logger.info("Generative AI client initialized successfully.")
+    except GenAIClientInitError as e:
+        logger.critical(f"Failed to initialize Generative AI client: {e}")
+        # Raising RuntimeError to halt startup if the client is essential
+        raise RuntimeError(f"Critical component failure: {e}") from e
+    except Exception as e:
+        logger.critical(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
+        raise RuntimeError(f"Unexpected critical component failure: {e}") from e
+else:
+    logger.critical(f"{config} is not a supported AI provider.")
+    raise RuntimeError(f"CRITICAL: Unsupported AI provider")
 
 # Exception Handlers
 @app.exception_handler(ValidationError)

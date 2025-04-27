@@ -4,7 +4,7 @@ set -e
 # Default values
 SRT_SIZE=${1:-"medium"}
 TARGET_LANG=${2:-"Vietnamese"}
-
+PORT=5100
 # Validate SRT size
 if [[ ! "$SRT_SIZE" =~ ^(short|medium|long)$ ]]; then
   echo "Error: SRT size must be 'short', 'medium', or 'long'"
@@ -18,7 +18,7 @@ OUTPUT_FILE="${SRT_SIZE}_${TARGET_LANG}.srt"
 # Test file upload and translation
 echo "Testing file upload and translation..."
 echo "Using ${INPUT_FILE} to translate to ${TARGET_LANG}..."
-curl -X POST http://localhost:5000/translate \
+curl -X POST http://localhost:$PORT/translate \
   -F "file=@${INPUT_FILE}" \
   -F "target_lang=${TARGET_LANG}" \
   -F "speed_mode=fast" \

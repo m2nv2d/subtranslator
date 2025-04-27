@@ -24,11 +24,6 @@ def load_config() -> Config:
     else:
         logging.warning(f".env file not found at: {dotenv_path}. Using environment variables or defaults.")
 
-    ai_api_key = os.getenv("AI_API_KEY")
-    if not ai_api_key:
-        logging.error("Mandatory environment variable 'AI_API_KEY' not found or empty.")
-        sys.exit("Error: Missing mandatory 'AI_API_KEY' in environment or .env file. Exiting.")
-
     # Target Languages (List[str], comma-separated)
     default_target_languages = ["Vietnamese", "French"]
     target_languages_str = os.getenv("TARGET_LANGUAGES", ",".join(default_target_languages))
@@ -81,6 +76,7 @@ def load_config() -> Config:
 
     try:
         ai_provider = os.getenv("AI_PROVIDER", "google-gemini").lower()
+        ai_api_key = os.getenv("AI_API_KEY")
         fast_model = os.getenv("FAST_MODEL", "gemini-2.5-flash-preview-04-17")
         normal_model = os.getenv("NORMAL_MODEL", "gemini-2.5-pro-preview-03-25")
     except Exception as e:

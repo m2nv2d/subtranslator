@@ -47,8 +47,6 @@ def parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[SubtitleBlock]
     except FileNotFoundError:
         raise ParsingError(f"File not found: {file_path}")
     except Exception as e:
-        # Catching generic Exception as srt library might raise various errors
-        # or file reading could fail
         raise ParsingError(f"Failed to parse SRT file '{file_path}': {e}") from e
 
     if not parsed_subs:
@@ -62,7 +60,7 @@ def parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[SubtitleBlock]
             start=sub.start,
             end=sub.end,
             content=sub.content,
-            translated_content=None # Initially None
+            translated_content=None
         )
         subtitle_blocks.append(block)
 

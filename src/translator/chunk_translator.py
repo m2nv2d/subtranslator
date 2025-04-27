@@ -1,5 +1,7 @@
 import asyncio
-import tenacity
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+from functools import wraps
+
 from typing import List, Optional
 import json
 import logging
@@ -7,16 +9,28 @@ import logging
 from google import genai
 from google.genai import types
 
-from translator.gemini_helper import FAST_MODEL, NORMAL_MODEL
 from translator.models import Config, SubtitleBlock
 from translator.exceptions import ChunkTranslationError
 
-@tenacity.retry(
-    stop=tenacity.stop_after_attempt(3), # Default value, will be set dynamically later
-    wait=tenacity.wait_fixed(1), # Example: wait 1 second between retries
-    retry=tenacity.retry_if_exception_type(Exception), # Retry on any exception for now
-    reraise=True # Reraise the exception after retries are exhausted
-)
+def configurable_retry(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        # Extract config from the function arguments
+        config = kwargs.get('config') or args[3]
+        
+        @retry(
+            stop=stop_after_attempt(config.retry_max_attempts),
+            wait=wait_fixed(1),
+            retry=retry_if_exception_type(Exception),
+            reraise=True
+        )
+        def wrapped_f(*args, **kwargs):
+            return f(*args, **kwargs)
+        
+        return wrapped_f(*args, **kwargs)
+    return wrapper
+
+@configurable_retry
 async def _translate_single_chunk(
     chunk_index: int,
     chunk: List[SubtitleBlock],
@@ -44,22 +58,14 @@ async def _translate_single_chunk(
             request_prompt += f"\n{i}\n{block.content}\n"
 
         logging.info(f"Chunk {chunk_index} sent for translation.")
-        if speed_mode == "fast":
-            response = await genai_client.aio.models.generate_content(
-                model=FAST_MODEL,
-                contents=[system_prompt, request_prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type='application/json',
-                )
+        model = config.fast_model if speed_mode == "fast" else config.normal_model
+        response = await genai_client.aio.models.generate_content(
+            model=model,
+            contents=[system_prompt, request_prompt],
+            config=types.GenerateContentConfig(
+            response_mime_type='application/json',
             )
-        else:
-            response = await genai_client.aio.models.generate_content(
-                model=NORMAL_MODEL,
-                contents=[system_prompt, request_prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type='application/json',
-                )
-            )
+        )
 
         # Parse response
         try:
