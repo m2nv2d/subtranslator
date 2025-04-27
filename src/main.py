@@ -56,7 +56,8 @@ static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 # Setup Jinja2 templates
-templates = Jinja2Templates(directory="templates")
+templates_path = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=templates_path)
 
 # AI Client Initialization
 genai_client: genai.client.Client | None = None
