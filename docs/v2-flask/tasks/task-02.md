@@ -21,7 +21,7 @@ Create the file `src/models.py`. Inside this file, define the data structures ne
     *   `content` (string)
     *   `translated_content` (optional string, initially None)
 *   **`Config`**: Represents the application's configuration settings. It should have attributes for:
-    *   `gemini_api_key` (string)
+    *   `ai_api_key` (string)
     *   `target_languages` (list of strings, e.g., `["Vietnamese", "French"]`)
     *   `chunk_max_blocks` (integer)
     *   `retry_max_attempts` (integer)
@@ -35,9 +35,9 @@ Create a function named `load_config` within `src/config_loader.py`. This functi
 
 Inside `load_config`, use the `python-dotenv` library to load variables from the `.env` file located in the project root directory into the environment.
 
-### Subtask 3: Handle Mandatory Variable (`GEMINI_API_KEY`)
+### Subtask 3: Handle Mandatory Variable (`AI_API_KEY`)
 
-Retrieve the `GEMINI_API_KEY` environment variable. This variable is mandatory. If it is not found or is empty, log an informative error message indicating the missing key and cause the application to exit (e.g., raise a `SystemExit` or `RuntimeError`).
+Retrieve the `AI_API_KEY` environment variable. This variable is mandatory. If it is not found or is empty, log an informative error message indicating the missing key and cause the application to exit (e.g., raise a `SystemExit` or `RuntimeError`).
 
 ### Subtask 4: Handle Optional Variables with Defaults
 

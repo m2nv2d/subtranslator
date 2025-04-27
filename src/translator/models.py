@@ -14,8 +14,11 @@ class SubtitleBlock:
 @dataclass
 class Config:
     """Application configuration settings."""
-    gemini_api_key: str
     target_languages: List[str]
     chunk_max_blocks: int
     retry_max_attempts: int
     log_level: str
+    ai_provider: str
+    ai_api_key: str
+    fast_model: str
+    normal_model: str

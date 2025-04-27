@@ -17,16 +17,16 @@ def main():
     print(f"Loading environment variables from: {env_path}")
     load_dotenv(dotenv_path=env_path)
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("AI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY not found in environment variables or .env file.")
-        print("Please create a .env file in the project root with GEMINI_API_KEY=your_key")
+        print("Error: AI_API_KEY not found in environment variables or .env file.")
+        print("Please create a .env file in the project root with AI_API_KEY=your_key")
         return
 
     # Create a dummy config for testing
     # Only the API key is needed for init_genai_client
     config = Config(
-        gemini_api_key=api_key,
+        ai_api_key=api_key,
         target_languages=["en"],  # Placeholder
         chunk_max_blocks=10,  # Placeholder
         retry_max_attempts=3, # Placeholder

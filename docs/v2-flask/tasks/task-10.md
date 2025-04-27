@@ -13,7 +13,7 @@ Your task is to compare the provided Technical Design Document at `docs/TECHNICA
 3.  Verify:
     *   Does the function exist with the name `load_config`?
     *   Does it return an object compatible with the `Config` model described in `src/models.py` (check return type hints if available, or infer from usage)?
-    *   Does it load `GEMINI_API_KEY`? How is its absence handled (e.g., log and exit, raise error)?
+    *   Does it load `AI_API_KEY`? How is its absence handled (e.g., log and exit, raise error)?
     *   Does it load `TARGET_LANGUAGES`? How is it parsed (comma-separated string to `List[str]`)? What is the actual default value in the code?
     *   Does it load `CHUNK_MAX_BLOCKS`? Is it an `int`? What is the actual default value?
     *   Does it load `RETRY_MAX_ATTEMPTS`? Is it an `int`? What is the actual default value?
@@ -41,7 +41,7 @@ Your task is to compare the provided Technical Design Document at `docs/TECHNICA
     *   Verify default values (e.g., `translated_content=None`).
     *   Are there any extra fields not mentioned in the design?
 4.  For `Config`:
-    *   Verify the existence and names of the fields (`gemini_api_key`, `target_languages`, `chunk_max_blocks`, `retry_max_attempts`, `log_level`).
+    *   Verify the existence and names of the fields (`ai_api_key`, `target_languages`, `chunk_max_blocks`, `retry_max_attempts`, `log_level`).
     *   Verify the data types (`str`, `List[str]`, `int`, `int`, `str`).
     *   Are there any extra fields not mentioned in the design?
 5.  Update the descriptions of these data classes in `docs/TECHNICAL_DESIGN.md`.

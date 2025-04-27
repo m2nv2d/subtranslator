@@ -19,7 +19,7 @@ def init_genai_client(config: Config) -> genai.client.Client | None:
         GenAIClientInitError: If client initialization fails.
     """
     try:
-        client = genai.Client(api_key=config.gemini_api_key)
+        client = genai.Client(api_key=config.ai_api_key)
         return client
     except Exception as e:
         raise GenAIClientInitError("Failed to initialize Gemini Client") from e

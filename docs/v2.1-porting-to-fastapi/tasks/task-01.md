@@ -24,7 +24,7 @@ Create a new file named `src/config.py`. In this file, implement the application
 Define a class named `Settings` that inherits from `pydantic_settings.BaseSettings`. This class will automatically load configuration values from environment variables and a `.env` file located in the project's root directory (one level above the `src` directory).
 
 The `Settings` class must define the following configuration fields, incorporating validation and default values as described:
-*   `gemini_api_key`: A `str` representing the API key for the Gemini service. This field is mandatory and should not have a default value; loading should fail if it's missing.
+*   `ai_api_key`: A `str` representing the API key for the Gemini service. This field is mandatory and should not have a default value; loading should fail if it's missing.
 *   `target_languages`: A `List[str]` containing the full names of languages the application can translate subtitles into (e.g., `["Vietnamese", "French"]`). This should be loaded from an environment variable (e.g., `TARGET_LANGUAGES="Vietnamese,French"`). Implement logic (e.g., using Pydantic validators or pre-processors) to parse a comma-separated string, strip whitespace from each language name, filter out any empty entries resulting from parsing, and default to `["Vietnamese", "French"]` if the environment variable is missing, empty, or contains invalid formatting.
 *   `chunk_max_blocks`: An `int` specifying the maximum number of subtitle blocks to include in a single chunk for processing. Apply validation to ensure this value is a positive integer. Set the default value to `100`.
 *   `retry_max_attempts`: An `int` defining the maximum number of retry attempts for API calls. Apply validation to ensure this value is a non-negative integer (zero or greater). Set the default value to `6`.
@@ -39,5 +39,5 @@ Create a new file named `src/dependencies.py`. Inside this file, define a simple
 Create a simple Python script named `test_config.py` inside the `tests/manual/` directory. This script should:
 1.  Import the `Settings` class from `src.config`.
 2.  Attempt to instantiate the `Settings` class.
-3.  Print the values of all attributes of the created settings instance (e.g., `settings.gemini_api_key`, `settings.target_languages`, etc.).
-Run this script directly to verify that configuration is loaded correctly from your `.env` file and that defaults and validation logic are working as expected. You will need a `.env` file in the project root with at least `GEMINI_API_KEY` defined for the script to succeed without errors.
+3.  Print the values of all attributes of the created settings instance (e.g., `settings.ai_api_key`, `settings.target_languages`, etc.).
+Run this script directly to verify that configuration is loaded correctly from your `.env` file and that defaults and validation logic are working as expected. You will need a `.env` file in the project root with at least `AI_API_KEY` defined for the script to succeed without errors.

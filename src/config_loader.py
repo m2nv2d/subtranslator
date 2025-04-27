@@ -24,11 +24,10 @@ def load_config() -> Config:
     else:
         logging.warning(f".env file not found at: {dotenv_path}. Using environment variables or defaults.")
 
-    # --- Subtask 3: Handle Mandatory Variable (GEMINI_API_KEY) ---
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        logging.error("Mandatory environment variable 'GEMINI_API_KEY' not found or empty.")
-        sys.exit("Error: Missing mandatory 'GEMINI_API_KEY' in environment or .env file. Exiting.")
+    ai_api_key = os.getenv("AI_API_KEY")
+    if not ai_api_key:
+        logging.error("Mandatory environment variable 'AI_API_KEY' not found or empty.")
+        sys.exit("Error: Missing mandatory 'AI_API_KEY' in environment or .env file. Exiting.")
 
     # Target Languages (List[str], comma-separated)
     default_target_languages = ["Vietnamese", "French"]
@@ -80,12 +79,23 @@ def load_config() -> Config:
         logging.warning(f"Invalid LOG_LEVEL='{os.getenv('LOG_LEVEL')}'. Must be one of {valid_log_levels}. Using default: {default_log_level}")
         log_level = default_log_level
 
+    try:
+        ai_provider = os.getenv("AI_PROVIDER", "google-gemini").lower()
+        fast_model = os.getenv("FAST_MODEL", "gemini-2.5-flash-preview-04-17")
+        normal_model = os.getenv("NORMAL_MODEL", "gemini-2.5-pro-preview-03-25")
+    except Exception as e:
+        logging.error(f"Error loading AI provider or model names: {e}")
+        sys.exit("Error: Missing mandatory AI provider or model names in environment or .env file. Exiting.")
+
     config = Config(
-        gemini_api_key=gemini_api_key,
+        ai_api_key=ai_api_key,
         target_languages=target_languages,
         chunk_max_blocks=chunk_max_blocks,
         retry_max_attempts=retry_max_attempts,
         log_level=log_level,
+        ai_provider=ai_provider,
+        fast_model=fast_model,
+        normal_model=normal_model
     )
 
     logging.info("Configuration loaded successfully.")

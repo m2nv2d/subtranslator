@@ -19,7 +19,7 @@ This document outlines the architecture of a Flask-based web application designe
     *   Horizontal scaling, advanced deployment strategies (CI/CD, containerization), extensive monitoring.
 
 **External Systems / Integrations**
-*   **Google Generative AI (Gemini):** Accessed via the `google-genai` Python SDK for context detection and translation tasks. Requires `GEMINI_API_KEY`.
+*   **Google Generative AI (Gemini):** Accessed via the `google-genai` Python SDK for context detection and translation tasks. Requires `AI_API_KEY`.
 *   **`srt` library:** Used for parsing uploaded SRT files into structured data and reassembling translated data back into SRT format.
 *   **`python-dotenv`:** Loads configuration settings from a `.env` file into environment variables at application startup.
 *   **`tenacity`:** Provides retry logic for potentially failing external API calls (Gemini).
@@ -91,7 +91,7 @@ Flask App (`src/app.py` - Single Process)
 *   **Single Shared `genai.Client`:** A single `google-genai` client instance is initialized at application startup (`app.py` using `gemini_helper.py`) and passed as a dependency to modules requiring API access (`context_detector`, `chunk_translator`). This avoids repeated initializations and manages the client lifecycle centrally.
 *   **Dependency Injection for Client:** Passing the `genai_client` instance explicitly makes dependencies clear and simplifies testing by allowing mock clients to be injected.
 *   **In-Memory Processing (Primarily):** Subtitle data is loaded into memory as `SubtitleBlock` objects after parsing. Translation modifies these objects directly. A temporary file is used only briefly to handle the initial upload before parsing.
-*   **Environment-Based Configuration:** `config_loader.py` reads settings (`GEMINI_API_KEY`, `TARGET_LANGUAGES`, etc.) from `.env` or environment variables, validated at startup. Avoids hardcoding sensitive information or deployment-specific settings.
+*   **Environment-Based Configuration:** `config_loader.py` reads settings (`AI_API_KEY`, `TARGET_LANGUAGES`, etc.) from `.env` or environment variables, validated at startup. Avoids hardcoding sensitive information or deployment-specific settings.
 *   **Custom Exceptions & Error Handling:** A dedicated `exceptions.py` defines specific error types. Flask's `@app.errorhandler` decorators in `app.py` catch these exceptions (and others like `tenacity.RetryError`) to return structured JSON error responses with appropriate HTTP status codes.
 *   **Client-Side Download Trigger:** The translated SRT is sent as a byte stream; `app.js` uses `fetch` and `Blob`/Object URL APIs to initiate the file download in the user's browser.
 
@@ -128,7 +128,7 @@ Flask App (`src/app.py` - Single Process)
 ## 8. Security & Privacy Considerations
 *   **Upload Validation:** `parser.py` checks file extension (`.srt`) and size (≤ 2MB) to mitigate risks from malicious uploads. `werkzeug.utils.secure_filename` is used before saving the temporary file.
 *   **In-Memory Processing:** Most data processing occurs on in-memory Python objects, minimizing disk footprint. Temporary upload files are deleted promptly after processing.
-*   **API Key Security:** `GEMINI_API_KEY` is loaded from `.env`/environment variables and should not be hardcoded or logged.
+*   **API Key Security:** `AI_API_KEY` is loaded from `.env`/environment variables and should not be hardcoded or logged.
 *   **Logging:** Configured to avoid logging sensitive data like full subtitle content or API keys (depends on logging implementation details within functions).
 *   **Trust Boundary:** User-uploaded content is untrusted. Validation is limited to format and size. The primary interaction is with the trusted Google Generative AI service.
 *   **Error Handling:** Specific errors are caught and returned as JSON, avoiding leakage of internal stack traces to the client in production.

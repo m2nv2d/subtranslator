@@ -10,7 +10,7 @@ This project is a web application designed to translate subtitle files (`.srt`) 
 *   Python environment set up with necessary dependencies installed (including `google-genai`). You should have a way to install packages (e.g., using `uv` or `pip`).
 *   Familiarity with Python functions, classes, imports, exception handling, and type hinting.
 *   Need to reference other project files for specific definitions:
-    *   `src/models.py`: Contains the `Config` data class definition, which holds the API key. Check this file for the exact structure and attribute name (e.g., `gemini_api_key`).
+    *   `src/models.py`: Contains the `Config` data class definition, which holds the API key. Check this file for the exact structure and attribute name (e.g., `ai_api_key`).
     *   `src/exceptions.py`: Contains custom exception classes. Check this file for the exact name of the exception to raise on initialization failure (e.g., `GenAIClientInitError`).
 
 **Subtask 1: Create Module and Define Imports**

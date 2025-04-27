@@ -23,7 +23,7 @@ This task is part of developing a Flask-based web application designed to transl
         *   `content: str`
         *   `translated_content: Optional[str]` (with a default value of `None`).
     *   Define another data class named `Config`. It must have the following attributes with the specified types:
-        *   `gemini_api_key: str`
+        *   `ai_api_key: str`
         *   `target_languages: List[str]` (This will hold full language names like "Vietnamese").
         *   `chunk_max_blocks: int`
         *   `retry_max_attempts: int`

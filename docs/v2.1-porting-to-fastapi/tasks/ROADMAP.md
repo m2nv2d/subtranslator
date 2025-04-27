@@ -9,7 +9,7 @@
 
 5.  **Pydantic Models:**
     *   Convert `src/translator/models.py`: Change `SubtitleBlock` from a dataclass to a Pydantic `BaseModel`.
-    *   Define `src/config.py`: Create a `Settings` class inheriting from Pydantic's `BaseSettings` to load configuration from `.env` automatically (replaces `config_loader.py`). Include fields like `gemini_api_key`, `target_languages` (perhaps validated as `List[str]`), `chunk_max_blocks`, `retry_max_attempts`, `log_level`.
+    *   Define `src/config.py`: Create a `Settings` class inheriting from Pydantic's `BaseSettings` to load configuration from `.env` automatically (replaces `config_loader.py`). Include fields like `ai_api_key`, `target_languages` (perhaps validated as `List[str]`), `chunk_max_blocks`, `retry_max_attempts`, `log_level`.
 6.  **Configuration Dependency:** Create a simple dependency function (e.g., in `src/dependencies.py`) that provides an instance of the `Settings` class.
 
 **Phase 2: Core Logic Adaptation (Async Focus)**

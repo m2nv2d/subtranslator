@@ -25,7 +25,7 @@ We are building a minimal Flask-based web application that allows a user to uplo
     *   Implements context detection using the first subtitle chunk via the shared `genai.Client`.
     *   Implements chunked translation using `asyncio` (`TaskGroup`) for concurrent API calls via the shared `genai.Client`.
     *   Utilizes the `srt` library for robust SRT parsing and generation.
-    *   Configuration (`GEMINI_API_KEY`, `TARGET_LANGUAGES`, `CHUNK_MAX_BLOCKS`, `RETRY_MAX_ATTEMPTS`, `LOG_LEVEL`) is managed via `.env` file and loaded/validated at startup by `src/config_loader.py`.
+    *   Configuration (`AI_API_KEY`, `TARGET_LANGUAGES`, `CHUNK_MAX_BLOCKS`, `RETRY_MAX_ATTEMPTS`, `LOG_LEVEL`) is managed via `.env` file and loaded/validated at startup by `src/config_loader.py`.
     *   A single, shared `google.generativeai.Client` instance is created at startup (`app.py` via `gemini_helper.py`) and passed to necessary service modules.
     *   Employs custom exceptions (`src/exceptions.py`) and Flask error handlers (`app.py`) for structured error reporting.
 
@@ -83,7 +83,7 @@ We are building a minimal Flask-based web application that allows a user to uplo
 ## 6. High-Level Functional Requirements
 1.  The system **shall** serve a single HTML page rendered via Flask/Jinja2 at the root URL (`/`).
 2.  The system **shall** validate uploaded files upon submission to ensure they have a `.srt` extension and a file size greater than 0 bytes and less than or equal to 2MB.
-3.  The system **shall**, via `src/config_loader.py` at startup, load configuration from a `.env` file or environment variables, including `GEMINI_API_KEY`, `TARGET_LANGUAGES`, `CHUNK_MAX_BLOCKS`, `RETRY_MAX_ATTEMPTS`, and `LOG_LEVEL`.
+3.  The system **shall**, via `src/config_loader.py` at startup, load configuration from a `.env` file or environment variables, including `AI_API_KEY`, `TARGET_LANGUAGES`, `CHUNK_MAX_BLOCKS`, `RETRY_MAX_ATTEMPTS`, and `LOG_LEVEL`.
 4.  The system **shall** use the `srt` library (via `src/parser.py`) to parse the content of the validated SRT file into chunks of `SubtitleBlock` data structures held in memory.
 5.  The system **shall** determine a context hint by sending the text of the first chunk to the Gemini API via `src/context_detector.py` using the shared `genai.Client`.
 6.  The system **shall** orchestrate asynchronous translation of subtitle chunks using `src/chunk_translator.py` (leveraging `asyncio` and `tenacity` for retries), passing the detected context, target language, speed mode, and using the shared `genai.Client` for API calls requesting JSON output.
@@ -106,7 +106,7 @@ We are building a minimal Flask-based web application that allows a user to uplo
 *   **Platform:** Primarily developed and run in a Linux-like environment.
 *   **Technology:** Backend implemented in Python using Flask. Frontend uses vanilla JavaScript (ES6+), HTML5, and CSS3 rendered via Jinja2.
 *   **Dependencies:** Requires Python 3.x with `asyncio` support. Key libraries include `Flask`, `google-genai`, `python-dotenv`, `srt`, `tenacity`. Package management via standard Python tools (e.g., `pip`, `uv`).
-*   **LLM:** Relies exclusively on the Google Generative AI (Gemini) API, accessed via the `google-genai` SDK. Assumes a valid `GEMINI_API_KEY` is provided via configuration.
+*   **LLM:** Relies exclusively on the Google Generative AI (Gemini) API, accessed via the `google-genai` SDK. Assumes a valid `AI_API_KEY` is provided via configuration.
 *   **Input Files:** Assumes uploaded `.srt` files are generally well-formed and encoded in UTF-8. Maximum size is strictly enforced at 2MB.
 *   **Translation Modes:** Only "normal" and "fast" modes are exposed. The mapping to specific Gemini models is an internal implementation detail within `context_detector` and `chunk_translator`.
 *   **User Feedback:** Limited to the single status line (`#status-message`) on the main page for processing updates and error reporting.
