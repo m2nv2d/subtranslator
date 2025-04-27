@@ -1,43 +1,41 @@
-## Task 1: Configuration & Models
+# Task 1: Adapt `src/main.py` from Flask to FastAPI
 
-**Project Context**
-This project is a web application that translates subtitle files (specifically `.srt` format) using an external Generative AI service (Google Gemini). This task focuses on setting up the data models and configuration management needed for the application using Pydantic, preparing for integration with the FastAPI framework.
+## Project Context
+You are refactoring a specific Python web application file, `src/main.py` (which was previously named `src/app.py`), from using the Flask framework to using the FastAPI framework. The goal is to make the application runnable via an ASGI server like Uvicorn, while reusing as much of the existing underlying business logic as possible. This logic resides primarily in a package named `translator` within the `src` directory. The application translates subtitle files (.srt).
 
-**Prerequisites**
-Ensure you have access to and familiarity with the following Python libraries:
-*   Pydantic (for data validation and modeling)
-*   Pydantic-Settings (for loading configuration from environment variables and `.env` files)
-*   python-dotenv (implicitly used by Pydantic-Settings to load `.env` files)
+## Prerequisites
+Ensure the following libraries are available in the Python environment: `fastapi`, an ASGI server (like `uvicorn`), `jinja2`, `python-multipart` (for form data handling in FastAPI), and `aiofiles` (for asynchronous file operations). You will need access to the existing code, particularly the file `src/main.py` (which contains the Flask implementation) and the contents of the `src/translator/` directory, especially `src/translator/exceptions.py` for custom exception types. The overall project structure follows the layout described in the technical design document.
 
-**Subtask 1: Define Core Data Model**
-Locate the existing data structures defined in `src/translator/models.py`. Your goal is to redefine the `SubtitleBlock` structure as a Pydantic `BaseModel`. This model should represent a single subtitle entry and must include the following fields with their specified types:
-*   `index`: `int`
-*   `start`: `datetime` (from the `datetime` standard library module)
-*   `end`: `datetime`
-*   `content`: `str`
-*   `translated_content`: `Optional[str]` (using `typing.Optional`), defaulting to `None`.
+## Subtask 1: Update Imports and Basic Setup
+Review the existing imports in `src/main.py`. Remove all Flask-specific imports (`Flask`, `request`, `render_template`, `send_file`, `jsonify`, `werkzeug.utils`, `werkzeug.exceptions`). Introduce corresponding imports from FastAPI for application creation (`FastAPI`), request/response objects (`Request`, `HTMLResponse`, `JSONResponse`, `StreamingResponse`), file handling (`UploadFile`, `File`), form data (`Form`), dependency injection (`Depends`, though maybe not used initially), static files (`StaticFiles`), templating (`Jinja2Templates`), and exceptions (`HTTPException`). Ensure necessary standard library imports (`io`, `os`, `pathlib`, `tempfile`, `shutil`, `logging`, `asyncio`) and imports from the `translator` package are retained or added if needed.
 
-You can remove or ignore the original `Config` class definition found in this file, as it will be replaced in the next step. Ensure the new Pydantic `SubtitleBlock` model resides in `src/translator/models.py`.
+## Subtask 2: Initialize FastAPI Application, Templates, and Static Files
+Replace the Flask application instance creation (`app = Flask(...)`) with a FastAPI instance (`app = FastAPI()`). Configure the application to serve static files from the `src/static` directory under the `/static` URL path using FastAPI's `StaticFiles` and `app.mount`. Initialize Jinja2 templating using `Jinja2Templates`, pointing it to the `src/templates` directory. Store the templates object in a variable (e.g., `templates`).
 
-**Subtask 2: Implement Configuration Settings**
-Create a new file named `src/config.py`. In this file, implement the application's configuration loading using Pydantic-Settings.
-Define a class named `Settings` that inherits from `pydantic_settings.BaseSettings`. This class will automatically load configuration values from environment variables and a `.env` file located in the project's root directory (one level above the `src` directory).
+## Subtask 3: Preserve Configuration and AI Client Initialization Logic
+Locate the existing code block responsible for loading application configuration (likely calling a function from `src.config_loader`) and conditionally initializing an AI client (e.g., `genai_client`) based on the configuration (`config.ai_provider`). This block, including logging, should remain largely unchanged and execute at the module level so that the `config` object and the `genai_client` (which might be `None`) are available globally within the `main.py` module for routes and handlers to use.
 
-The `Settings` class must define the following configuration fields, incorporating validation and default values as described:
-*   `ai_api_key`: A `str` representing the API key for the Gemini service. This field is mandatory and should not have a default value; loading should fail if it's missing.
-*   `target_languages`: A `List[str]` containing the full names of languages the application can translate subtitles into (e.g., `["Vietnamese", "French"]`). This should be loaded from an environment variable (e.g., `TARGET_LANGUAGES="Vietnamese,French"`). Implement logic (e.g., using Pydantic validators or pre-processors) to parse a comma-separated string, strip whitespace from each language name, filter out any empty entries resulting from parsing, and default to `["Vietnamese", "French"]` if the environment variable is missing, empty, or contains invalid formatting.
-*   `chunk_max_blocks`: An `int` specifying the maximum number of subtitle blocks to include in a single chunk for processing. Apply validation to ensure this value is a positive integer. Set the default value to `100`.
-*   `retry_max_attempts`: An `int` defining the maximum number of retry attempts for API calls. Apply validation to ensure this value is a non-negative integer (zero or greater). Set the default value to `6`.
-*   `log_level`: A `str` indicating the logging level for the application. Apply validation to ensure the value is one of the following uppercase strings: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`. Set the default value to `"INFO"`.
+## Subtask 4: Convert Error Handlers
+Find all Flask error handlers (`@app.errorhandler(...)`). Convert them to FastAPI exception handlers using the `@app.exception_handler(ExceptionType)` decorator. Each handler function must be defined as `async def handler_name(request: Request, exc: ExceptionType)` and should return a `fastapi.responses.JSONResponse` object with the appropriate JSON payload (e.g., `{"error": str(exc)}`) and HTTP status code. You need to create handlers for the custom exceptions defined in `src/translator/exceptions.py`:
+- `ValidationError` (400)
+- `ParsingError` (422)
+- `ContextDetectionError` (500)
+- `ChunkTranslationError` (500)
+Also, handle `tenacity.RetryError` (504) and `RuntimeError` (503 if it's a client initialization/configuration issue, 500 otherwise). Note that `GenAIClientInitError`, `GenAIRequestError`, and `GenAIParsingError` might be caught by other handlers (like `RuntimeError` or `RetryError`) depending on where they are raised. Ensure appropriate logging is maintained within the handlers.
 
-Configure the `Settings` class (via its `model_config` or `Config` inner class, depending on your Pydantic version) to read from a `.env` file. This new `Settings` class effectively replaces the functionality previously handled by `src/config_loader.py` and the old `Config` data class.
+## Subtask 5: Refactor the Root Route (`GET /`)
+Locate the Flask route for `GET /`. Convert its decorator to FastAPI's `@app.get("/", response_class=HTMLResponse)`. Change the function definition to be asynchronous (`async def`) and accept `request: Request` as the first argument. Replace the call to Flask's `render_template` with a call to the `templates.TemplateResponse` method of the Jinja2Templates instance created in Subtask 2. Ensure you pass the template name (`"index.html"`) and the context dictionary. The context dictionary must include the `request` object (`{"request": request, ...}`) and the `languages` variable derived from the global `config` object (`config.target_languages`).
 
-**Subtask 3: Create Configuration Dependency Function**
-Create a new file named `src/dependencies.py`. Inside this file, define a simple synchronous function, for example named `get_settings`, that takes no arguments. This function's sole purpose is to instantiate the `Settings` class (defined in `src/config.py`) and return the instance. This function will later be used by FastAPI to inject the application settings into route handlers.
+## Subtask 6: Refactor the Translation Route (`POST /translate`)
+Locate the Flask route for `POST /translate`. Convert its decorator to FastAPI's `@app.post("/translate")`. Change the function definition to be asynchronous (`async def`). Remove direct access to `request.form` and `request.files`. Instead, define parameters in the function signature using FastAPI's type hints and default values: `file: UploadFile = File(...)`, `target_lang: str = Form(...)`, `speed_mode: str = Form("normal")`.
+Re-implement the file handling logic:
+- Get the original filename using `file.filename`. Use `secure_filename` (imported from `werkzeug.utils` or reimplemented if Werkzeug is removed) on this name.
+- Create a temporary directory using `tempfile.mkdtemp()`.
+- Save the uploaded file content to a path within the temporary directory. You can use `await file.read()` and then write asynchronously using `aiofiles`, or use synchronous file operations which FastAPI will run in a thread pool.
+- Keep the `try...finally` block that ensures the temporary directory is removed using `shutil.rmtree`.
+Preserve the logic at the beginning of the function that checks `config.ai_provider`, `speed_mode`, and the availability of the global `genai_client`. When errors are detected here (e.g., client not available for required mode), raise FastAPI's `HTTPException` with the appropriate status code (501, 503) and detail message.
+The calls to the underlying `translator` functions (`parse_srt`, `detect_context`, `reassemble_srt`) should remain syntactically similar. However, the call to `translate_all_chunks` was previously wrapped in `asyncio.run()`. Since the FastAPI route handler is now `async`, you should directly `await` the call: `await translator_chunk_translator.translate_all_chunks(...)`.
+Replace the Flask `send_file` response. Create an `io.BytesIO` buffer from the `translated_srt_bytes` returned by the reassembler. Construct the `download_filename` using the original stem and target language, same as before. Return a `fastapi.responses.StreamingResponse`, passing the buffer, the `media_type='text/srt'`, and a `headers` dictionary containing the `Content-Disposition` header to trigger the download with the correct filename.
 
-**Debugging**
-Create a simple Python script named `test_config.py` inside the `tests/manual/` directory. This script should:
-1.  Import the `Settings` class from `src.config`.
-2.  Attempt to instantiate the `Settings` class.
-3.  Print the values of all attributes of the created settings instance (e.g., `settings.ai_api_key`, `settings.target_languages`, etc.).
-Run this script directly to verify that configuration is loaded correctly from your `.env` file and that defaults and validation logic are working as expected. You will need a `.env` file in the project root with at least `AI_API_KEY` defined for the script to succeed without errors.
+## Debug Script Reference
+After implementing these changes in `src/main.py`, you can perform a basic manual test. Execute the script located at `tests/manual/run_fastapi_test.sh`. This script should start the Uvicorn server and potentially use `curl` or a similar tool to send a POST request with an SRT file to the `/translate` endpoint, verifying that it returns a translated SRT file without server errors. Consult the script for specific parameters or required test files.
