@@ -1,18 +1,10 @@
-import asyncio
-import io
 import logging
-import os
-import tempfile
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from google import genai
 from tenacity import RetryError
-from werkzeug.utils import secure_filename
 
 from translator import (
     parse_srt,
@@ -34,8 +26,7 @@ from core.dependencies import get_application_settings, get_genai_client
 # Import the router
 from routers.translate import router as translate_router
 
-# Configure logging (this will be reconfigured once config is loaded via dependency)
-# We set a basic default level here
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -45,10 +36,6 @@ app = FastAPI(title="Subtranslator")
 # Mount static files
 static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
-
-# Setup Jinja2 templates
-templates_path = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=templates_path)
 
 # Include the router
 app.include_router(translate_router)
@@ -109,6 +96,3 @@ async def generic_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content=create_error_response("An unexpected internal server error occurred.")
     )
-
-# The route handler functions for / and /translate have been moved to src/routers/translate.py
-# and their implementation has been replaced with the router include above

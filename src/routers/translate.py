@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from google import genai
@@ -53,6 +53,7 @@ async def index(request: Request, settings: Annotated[Settings, Depends(get_appl
 async def translate_srt(
     settings: Annotated[Settings, Depends(get_application_settings)],
     genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")
@@ -149,6 +150,13 @@ async def translate_srt(
         logger.info(f"Returning translated SRT for {original_filename} to {target_lang}")
         new_filename = f"{os.path.splitext(original_filename)[0]}_{target_lang.lower()}.srt"
         
+        # Schedule cleanup as background tasks
+        if os.path.exists(temp_file_path):
+            background_tasks.add_task(os.unlink, temp_file_path)
+        if os.path.exists(temp_dir):
+            background_tasks.add_task(os.rmdir, temp_dir)
+        logger.debug("Temporary file cleanup scheduled as background tasks.")
+        
         return StreamingResponse(
             io.BytesIO(output_srt_content.encode('utf-8') if isinstance(output_srt_content, str) else output_srt_content),
             media_type="application/octet-stream",
@@ -173,14 +181,4 @@ async def translate_srt(
     except Exception as e:
         logger.exception(f"Unhandled exception during translation: {e}")
         # Convert generic exceptions to HTTP exceptions
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Clean up temporary files
-        try:
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-            if os.path.exists(temp_dir):
-                os.rmdir(temp_dir)
-            logger.debug("Temporary files cleaned up.")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary files: {e}") 
+        raise HTTPException(status_code=500, detail=str(e)) 
