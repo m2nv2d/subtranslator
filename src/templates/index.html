@@ -19,18 +19,21 @@
         <div>
             <label for="target-lang">Target Language:</label>
             <select id="target-lang" name="target_lang" required>
-                <option value="" disabled selected>Select Language</option>
-                {% for lang in languages %}
+            {% for lang in languages %}
+                {% if loop.first %}
+                <option value="{{ lang }}" selected>{{ lang }}</option>
+                {% else %}
                 <option value="{{ lang }}">{{ lang }}</option>
-                {% endfor %}
+                {% endif %}
+            {% endfor %}
             </select>
         </div>
 
         <div>
             <label for="speed-mode">Speed Mode:</label>
             <select id="speed-mode" name="speed_mode">
-                <option value="normal" selected>Normal</option>
-                <option value="fast">Fast</option>
+                <option value="normal">Normal</option>
+                <option value="fast" selected>Fast</option>
             </select>
         </div>
 

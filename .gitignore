@@ -15,4 +15,5 @@ node_modules/
 .env
 
 # Tests
-tests/srt
+tests/samples
+*.srt

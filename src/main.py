@@ -4,8 +4,9 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,9 +14,7 @@ from google import genai
 from tenacity import RetryError
 from werkzeug.utils import secure_filename
 
-from config_loader import load_config
 from translator import (
-    init_genai_client,
     parse_srt,
     detect_context,
     reassemble_srt,
@@ -30,22 +29,11 @@ from translator import (
     GenAIClientInitError,
 )
 
-# Load configuration
-try:
-    config: Config = load_config()
-except ConfigError as e:
-    logging.basicConfig(level=logging.ERROR)
-    logging.critical(f"Failed to load configuration: {e}")
-    # Exit if config fails to load, as the app cannot run
-    raise SystemExit(f"CRITICAL: Configuration loading failed - {e}") from e
+from dependencies import get_config, get_genai_client
 
-# Configure logging
-log_level_str = config.log_level.upper()
-log_level = getattr(logging, log_level_str, logging.INFO)
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging (this will be reconfigured once config is loaded via dependency)
+# We set a basic default level here
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app instance
@@ -58,23 +46,6 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 # Setup Jinja2 templates
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=templates_path)
-
-# AI Client Initialization
-if config.ai_provider == "google-gemini":
-    genai_client: genai.client.Client | None = None
-    try:
-        genai_client = init_genai_client(config)
-        logger.info("Generative AI client initialized successfully.")
-    except GenAIClientInitError as e:
-        logger.critical(f"Failed to initialize Generative AI client: {e}")
-        # Raising RuntimeError to halt startup if the client is essential
-        raise RuntimeError(f"Critical component failure: {e}") from e
-    except Exception as e:
-        logger.critical(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
-        raise RuntimeError(f"Unexpected critical component failure: {e}") from e
-else:
-    logger.critical(f"{config} is not a supported AI provider.")
-    raise RuntimeError(f"CRITICAL: Unsupported AI provider")
 
 # Exception Handlers
 @app.exception_handler(ValidationError)
@@ -135,7 +106,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # Routes
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, config: Annotated[Config, Depends(get_config)]):
     """Renders the main upload form."""
     logger.debug("Serving index page.")
     return templates.TemplateResponse(
@@ -145,20 +116,35 @@ async def index(request: Request):
 
 @app.post("/translate")
 async def translate_srt(
+    config: Annotated[Config, Depends(get_config)],
+    genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")
 ):
     """Handles the SRT file upload, translation orchestration, and response."""
-    logger.info("Received request for /translate")
+    logger.info(f"Received request for /translate for target language '{target_lang}' with speed mode '{speed_mode}'")
 
-    # Client Check
-    if genai_client is None:
-        logger.error("Translation request failed: Generative AI client not initialized.")
-        raise HTTPException(
-            status_code=503,
-            detail="Service Unavailable: Translation backend not ready."
-        )
+    # Client Check (moved up slightly for clarity)
+    # Check if the client is needed based on speed_mode and config
+    client_required = speed_mode != "mock" and config.ai_provider == "google-gemini"
+
+    if client_required and genai_client is None:
+        # This covers two cases: provider is gemini but init failed, OR provider is not gemini
+        # but speed_mode requires it (which shouldn't happen with proper config, but good to check)
+        if config.ai_provider != "google-gemini":
+             logger.error("Translation request failed: AI provider '%s' does not support non-mock translation.", config.ai_provider)
+             raise HTTPException(
+                 status_code=501, # Not Implemented or 503 Service Unavailable?
+                 detail=f"Service Unavailable: AI provider '{config.ai_provider}' does not support non-mock translation."
+             )
+        else:
+             # Provider is gemini, but client failed to initialize
+             logger.error("Translation request failed: Generative AI client is configured but not available.")
+             raise HTTPException(
+                 status_code=503,
+                 detail="Service Unavailable: Translation backend not ready or failed to initialize."
+             )
 
     # Input Validation
     if not file.filename or not file.filename.lower().endswith('.srt'):
@@ -168,7 +154,7 @@ async def translate_srt(
     if not target_lang:
         logger.warning("Translation request failed: Target language not specified.")
         raise ValidationError("Target language must be specified.")
-    
+
     if target_lang not in config.target_languages:
         logger.warning(f"Translation request failed: Invalid target language '{target_lang}'.")
         raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(config.target_languages)}")
@@ -177,7 +163,7 @@ async def translate_srt(
     original_filename = secure_filename(file.filename)
     temp_dir = tempfile.mkdtemp()
     temp_file_path = os.path.join(temp_dir, original_filename)
-    
+
     try:
         # Save uploaded file
         content = await file.read()
@@ -197,20 +183,21 @@ async def translate_srt(
 
         # 2. Detect Context
         logger.debug("Detecting context...")
+        # Pass the potentially None client - detect_context should handle mock mode without it
         context: str = detect_context(
-            subtitle_chunks, speed_mode, genai_client, config
+            subtitle_chunks, speed_mode, genai_client, config # Pass client here
         )
         logger.info(f"Detected context: '{context[:100]}...'")
 
         # 3. Translate Chunks
         logger.debug("Translating chunks...")
-        # No need for asyncio.run() since we're already in an async context
+        # Pass the potentially None client - translate_all_chunks should handle mock mode without it
         await translate_all_chunks(
             context=context,
             sub=subtitle_chunks,
             target_lang=target_lang,
             speed_mode=speed_mode,
-            genai_client=genai_client,
+            genai_client=genai_client, # Pass client here
             config=config
         )
         logger.info("Finished translating chunks.")
