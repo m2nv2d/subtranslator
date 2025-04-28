@@ -31,6 +31,9 @@ from core.config import Settings
 from core.errors import ErrorDetail, create_error_response
 from core.dependencies import get_application_settings, get_genai_client
 
+# Import the router
+from routers.translate import router as translate_router
+
 # Configure logging (this will be reconfigured once config is loaded via dependency)
 # We set a basic default level here
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -46,6 +49,9 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 # Setup Jinja2 templates
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=templates_path)
+
+# Include the router
+app.include_router(translate_router)
 
 # Exception Handlers
 @app.exception_handler(ValidationError)
@@ -104,148 +110,5 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content=create_error_response("An unexpected internal server error occurred.")
     )
 
-# Routes
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request, settings: Annotated[Settings, Depends(get_application_settings)]):
-    """Renders the main upload form."""
-    logger.debug("Serving index page.")
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "languages": settings.TARGET_LANGUAGES}
-    )
-
-@app.post("/translate")
-async def translate_srt(
-    settings: Annotated[Settings, Depends(get_application_settings)],
-    genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
-    file: UploadFile = File(...),
-    target_lang: str = Form(...),
-    speed_mode: str = Form("normal")
-):
-    """Handles the SRT file upload, translation orchestration, and response."""
-    logger.info(f"Received request for /translate for target language '{target_lang}' with speed mode '{speed_mode}'")
-
-    # Client Check (moved up slightly for clarity)
-    # Check if the client is needed based on speed_mode and settings
-    client_required = speed_mode != "mock" and settings.AI_PROVIDER == "google-gemini"
-
-    if client_required and genai_client is None:
-        # This covers two cases: provider is gemini but init failed, OR provider is not gemini
-        # but speed_mode requires it (which shouldn't happen with proper config, but good to check)
-        if settings.AI_PROVIDER != "google-gemini":
-             logger.error("Translation request failed: AI provider '%s' does not support non-mock translation.", settings.AI_PROVIDER)
-             raise HTTPException(
-                 status_code=501, # Not Implemented or 503 Service Unavailable?
-                 detail=f"Service Unavailable: AI provider '{settings.AI_PROVIDER}' does not support non-mock translation."
-             )
-        else:
-             # Provider is gemini, but client failed to initialize
-             logger.error("Translation request failed: Generative AI client is configured but not available.")
-             raise HTTPException(
-                 status_code=503,
-                 detail="Service Unavailable: Translation backend not ready or failed to initialize."
-             )
-
-    # Input Validation
-    if not file.filename or not file.filename.lower().endswith('.srt'):
-        logger.warning(f"Translation request failed: Invalid file type '{file.filename}'.")
-        raise ValidationError("Invalid file type. Please upload an SRT file.")
-
-    if not target_lang:
-        logger.warning("Translation request failed: Target language not specified.")
-        raise ValidationError("Target language must be specified.")
-
-    if target_lang not in settings.TARGET_LANGUAGES:
-        logger.warning(f"Translation request failed: Invalid target language '{target_lang}'.")
-        raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(settings.TARGET_LANGUAGES)}")
-
-    # Secure filename and prepare temporary file path
-    original_filename = secure_filename(file.filename)
-    temp_dir = tempfile.mkdtemp()
-    temp_file_path = os.path.join(temp_dir, original_filename)
-
-    try:
-        # Save uploaded file
-        content = await file.read()
-        with open(temp_file_path, "wb") as temp_file:
-            temp_file.write(content)
-        logger.debug(f"Saved uploaded file temporarily to: {temp_file_path}")
-
-        # Workflow Orchestration
-        logger.info(f"Starting translation workflow for {original_filename} to {target_lang} ({speed_mode} mode)")
-
-        # 1. Parse SRT
-        logger.debug("Parsing SRT file...")
-        subtitle_chunks: list[list[SubtitleBlock]] = parse_srt(
-            temp_file_path, settings.CHUNK_MAX_BLOCKS
-        )
-        logger.info(f"Parsed SRT into {len(subtitle_chunks)} chunk(s).")
-
-        # 2. Detect Context
-        logger.debug("Detecting context...")
-        # Pass the potentially None client - detect_context should handle mock mode without it
-        context: str = detect_context(
-            subtitle_chunks, speed_mode, genai_client, settings # Pass settings here
-        )
-        logger.info(f"Detected context: '{context[:100]}...'")
-
-        # 3. Translate Chunks
-        logger.debug("Translating chunks...")
-        # Pass the potentially None client - translate_all_chunks should handle mock mode without it
-        await translate_all_chunks(
-            context=context,
-            sub=subtitle_chunks,
-            target_lang=target_lang,
-            speed_mode=speed_mode,
-            client=genai_client,
-            settings=settings, # Pass settings here
-            retry_max_attempts=settings.RETRY_MAX_ATTEMPTS,
-            normal_model=settings.NORMAL_MODEL,
-            fast_model=settings.FAST_MODEL
-        )
-        logger.info("Chunks translated successfully.")
-
-        # 4. Reassemble SRT
-        logger.debug("Reassembling SRT...")
-        output_srt_content = reassemble_srt(subtitle_chunks)
-        logger.info("SRT reassembled successfully.")
-
-        # 5. Return translated SRT file
-        logger.info(f"Returning translated SRT for {original_filename} to {target_lang}")
-        new_filename = f"{os.path.splitext(original_filename)[0]}_{target_lang.lower()}.srt"
-        
-        return StreamingResponse(
-            io.StringIO(output_srt_content),
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": f"attachment; filename={new_filename}"}
-        )
-    
-    except ValidationError as e:
-        logger.warning(f"Validation error during translation: {e}")
-        raise
-    except ParsingError as e:
-        logger.error(f"Error parsing SRT: {e}")
-        raise
-    except ContextDetectionError as e:
-        logger.error(f"Error detecting context: {e}")
-        raise
-    except ChunkTranslationError as e:
-        logger.error(f"Error translating chunks: {e}")
-        raise
-    except RetryError as e:
-        logger.error(f"Retry error after multiple attempts: {e}")
-        raise
-    except Exception as e:
-        logger.exception(f"Unhandled exception during translation: {e}")
-        # Convert generic exceptions to HTTP exceptions
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Clean up temporary files
-        try:
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-            if os.path.exists(temp_dir):
-                os.rmdir(temp_dir)
-            logger.debug("Temporary files cleaned up.")
-        except Exception as e:
-            logger.warning(f"Failed to clean up temporary files: {e}")
+# The route handler functions for / and /translate have been moved to src/routers/translate.py
+# and their implementation has been replaced with the router include above
