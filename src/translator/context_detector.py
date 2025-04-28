@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from functools import wraps
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def configurable_retry(f):
     @wraps(f)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         # Extract settings from the function arguments
         settings = kwargs.get('settings') or args[3]
         
@@ -23,14 +24,14 @@ def configurable_retry(f):
             retry=retry_if_exception_type(Exception),
             reraise=True
         )
-        def wrapped_f(*args, **kwargs):
-            return f(*args, **kwargs)
+        async def wrapped_f(*args, **kwargs):
+            return await f(*args, **kwargs)
         
-        return wrapped_f(*args, **kwargs)
+        return await wrapped_f(*args, **kwargs)
     return wrapper
 
 @configurable_retry
-def detect_context(
+async def detect_context(
     sub: List[List[SubtitleBlock]],
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
@@ -63,13 +64,13 @@ def detect_context(
         system_prompt = "You are a context detector. Your task is to analyze the subtitle content provided and determine the general context in one sentence. Only give me that context read to use. If it's a movie, just give a general theme. If a vlog/tutorial, the general topic the speaker(s) are talking about. The template is: This is a subtitle for a movie/vlog/tutorial/... for/of/about ..."
         request_prompt = f"{content}"
 
-        # Call GenAI
+        # Call GenAI using async API
         model = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
-        detected_context = genai_client.models.generate_content(
+        response = await genai_client.aio.models.generate_content(
                 model=model,
                 contents=[system_prompt, request_prompt]
-        ).text
-        return detected_context
+        )
+        return response.text
 
     else:
         logger.error(f"Invalid speed_mode: {speed_mode}")

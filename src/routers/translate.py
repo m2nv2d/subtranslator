@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from google import genai
 from tenacity import RetryError
 from werkzeug.utils import secure_filename
+import aiofiles
 
 from translator import (
     parse_srt,
@@ -101,10 +102,10 @@ async def translate_srt(
     temp_file_path = os.path.join(temp_dir, original_filename)
 
     try:
-        # Save uploaded file
+        # Save uploaded file asynchronously
         content = await file.read()
-        with open(temp_file_path, "wb") as temp_file:
-            temp_file.write(content)
+        async with aiofiles.open(temp_file_path, "wb") as temp_file:
+            await temp_file.write(content)
         logger.debug(f"Saved uploaded file temporarily to: {temp_file_path}")
 
         # Workflow Orchestration
@@ -112,7 +113,7 @@ async def translate_srt(
 
         # 1. Parse SRT
         logger.debug("Parsing SRT file...")
-        subtitle_chunks: list[list[SubtitleBlock]] = parse_srt(
+        subtitle_chunks: list[list[SubtitleBlock]] = await parse_srt(
             temp_file_path, settings.CHUNK_MAX_BLOCKS
         )
         logger.info(f"Parsed SRT into {len(subtitle_chunks)} chunk(s).")
@@ -120,7 +121,7 @@ async def translate_srt(
         # 2. Detect Context
         logger.debug("Detecting context...")
         # Pass the potentially None client - detect_context should handle mock mode without it
-        context: str = detect_context(
+        context: str = await detect_context(
             subtitle_chunks, speed_mode, genai_client, settings # Pass settings here
         )
         logger.info(f"Detected context: '{context[:100]}...'")
