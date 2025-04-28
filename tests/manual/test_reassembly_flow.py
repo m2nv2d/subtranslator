@@ -16,14 +16,14 @@ from translator import ChunkTranslationError
 async def main():
     parser = argparse.ArgumentParser(description="Manual test script for reassembly flow.")
     parser.add_argument(
-        "srt_file",
-        type=str,
-        help="Path to the input SRT file."
+        "name",
+        choices=['short', 'medium', 'long'],
+        help="Name of the sample file to parse (short.srt, medium.srt, or long.srt)."
     )
     parser.add_argument(
         "--speed-mode",
         type=str,
-        default="mock",
+        default="fast",
         choices=["mock", "fast", "normal"],
         help="Translation mode ('mock', 'fast', or 'normal')."
     )
@@ -35,9 +35,13 @@ async def main():
     )
 
     args = parser.parse_args()
+    
+    srt_file_path = project_root / 'tests' / 'samples' / f"{args.name}.srt"
 
-    logging.basicConfig(level=args.log_level, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info(f"Running test with srt_file: {args.srt_file}, speed_mode: {args.speed_mode}")
+    logging.basicConfig(level=args.log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.info(f"Running test with srt_file: {srt_file_path}, speed_mode: {args.speed_mode}")
+    for pkg in ["httpx", "google_genai"]:
+        logging.getLogger(pkg).setLevel(logging.WARNING)
 
     # --- Load Configuration ---
     try:
@@ -60,13 +64,13 @@ async def main():
 
     # --- Parse SRT File ---
     try:
-        subtitle_chunks = parse_srt(args.srt_file, config.chunk_max_blocks)
+        subtitle_chunks = parse_srt(str(srt_file_path), config.chunk_max_blocks)
         logging.info(f"Parsed {len(subtitle_chunks)} chunks from the file.")
         if not subtitle_chunks:
             logging.error("No subtitle chunks found in the file.")
             return
     except FileNotFoundError:
-        logging.error(f"SRT file not found: {args.srt_file}")
+        logging.error(f"SRT file not found: {srt_file_path}")
         return
     except Exception as e:
         logging.error(f"Error parsing SRT file: {e}")
@@ -74,7 +78,6 @@ async def main():
 
     # --- Detect Context ---
     try:
-        logging.info("Detecting context...")
         detected_context = detect_context(
             sub=subtitle_chunks,
             speed_mode=args.speed_mode,
@@ -94,7 +97,6 @@ async def main():
 
 
     # --- Run the translator ---
-    logging.info(f"Starting chunk translation for {target_lang}...")
     try:
         await translate_all_chunks(
             context=context,
@@ -107,20 +109,17 @@ async def main():
         logging.info("Chunk translation completed.")
 
     except ChunkTranslationError as e:
-        logging.error(f"\n--- Chunk Translation Failed --- Error: {e}")
+        raise RuntimeError("Chunk translation failed, cannot proceed to reassembly.")
     except Exception as e:
-        logging.exception(f"\n--- An unexpected error occurred during translation --- Error: {e}") # Use logging.exception for traceback
+        raise RuntimeError("Translation failed, cannot proceed to reassembly.")
 
     # --- Run the reassembly ---
     logging.info(f"Starting reassembly...")
     try:
         reassembled_content = reassemble_srt(subtitle_chunks)
-        logging.info("\nReassembly completed.")
-
         # Save the reassembled content to the new SRT file
-        input_path = Path(args.srt_file)
-        output_filename = f"{input_path.stem}_translated.srt"
-        output_path = input_path.parent / output_filename
+        output_filename = f"{args.name}_translated.srt"
+        output_path = srt_file_path.parent / output_filename
         try:
             with open(output_path, 'wb') as f:
                 f.write(reassembled_content)
@@ -128,7 +127,7 @@ async def main():
         except IOError as e:
             logging.error(f"Error writing reassembled content to file {output_path}: {e}")
     except Exception as e:
-        logging.error(f"\n--- Reassembly Failed --- Error: {e}")
+        logging.error(f"--- Reassembly Failed --- Error: {e}")
 
 if __name__ == "__main__":    
     asyncio.run(main())

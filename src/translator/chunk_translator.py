@@ -1,5 +1,5 @@
 import asyncio
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log
 from functools import wraps
 
 from typing import List, Optional
@@ -14,20 +14,59 @@ from translator.exceptions import ChunkTranslationError
 
 def configurable_retry(f):
     @wraps(f)
-    def wrapper(*args, **kwargs):
-        # Extract config from the function arguments
-        config = kwargs.get('config') or args[3]
+    async def wrapper(*args, **kwargs):
+        # Extract config and chunk_index from the function arguments more safely
+        config = kwargs.get('config')
+        chunk_index = kwargs.get('chunk_index')
         
+        # If not in kwargs, try to find them in args by matching the function signature
+        if config is None or chunk_index is None:
+            # Get the parameter names from the function
+            from inspect import signature
+            sig = signature(f)
+            param_names = list(sig.parameters.keys())
+            
+            # Find positions of config and chunk_index in the signature
+            if config is None and 'config' in param_names:
+                config_pos = param_names.index('config')
+                if len(args) > config_pos:
+                    config = args[config_pos]
+            
+            if chunk_index is None and 'chunk_index' in param_names:
+                chunk_pos = param_names.index('chunk_index')
+                if len(args) > chunk_pos:
+                    chunk_index = args[chunk_pos]
+        
+        if config is None:
+            raise ValueError("Could not find config in arguments")
+        if chunk_index is None:
+            raise ValueError("Could not find chunk_index in arguments")
+
+        logger = logging.getLogger(__name__)
+        attempt_count = 0
+
         @retry(
             stop=stop_after_attempt(config.retry_max_attempts),
             wait=wait_fixed(1),
             retry=retry_if_exception_type(Exception),
+            before_sleep=before_sleep_log(logger, logging.INFO, exc_info=True),
             reraise=True
         )
-        def wrapped_f(*args, **kwargs):
-            return f(*args, **kwargs)
+        async def wrapped_f(*args, **kwargs):
+            nonlocal attempt_count
+            attempt_count += 1
+            try:
+                result = await f(*args, **kwargs)
+                logger.info(f"Chunk {chunk_index} succeeded on attempt {attempt_count}/{config.retry_max_attempts}")
+                return result
+            except Exception as e:
+                if attempt_count >= config.retry_max_attempts:
+                    logger.error(f"Chunk {chunk_index} failed after all {attempt_count} attempts")
+                else:
+                    logger.warning(f"Chunk {chunk_index} failed on attempt {attempt_count}/{config.retry_max_attempts}, retrying...")
+                raise
         
-        return wrapped_f(*args, **kwargs)
+        return await wrapped_f(*args, **kwargs)
     return wrapper
 
 @configurable_retry
@@ -57,7 +96,6 @@ async def _translate_single_chunk(
         for i, block in enumerate(chunk):
             request_prompt += f"\n{i}\n{block.content}\n"
 
-        logging.info(f"Chunk {chunk_index} sent for translation.")
         model = config.fast_model if speed_mode == "fast" else config.normal_model
         response = await genai_client.aio.models.generate_content(
             model=model,
@@ -80,17 +118,17 @@ async def _translate_single_chunk(
                     translated_lines += block[f'translated_line_{i}']
                     i += 1
                 chunk[block_index].translated_content = translated_lines
-            logging.info(f"Chunk {chunk_index} processed successfully.")
+            logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response.text}\n-----END-----\n")            
 
         except json.JSONDecodeError:
-            raise ChunkTranslationError(f"Failed to parse JSON response: {response}")
+            raise ChunkTranslationError(f"Failed to parse JSON response")
 
 async def translate_all_chunks(
     context: str,
     sub: List[List[SubtitleBlock]],
     target_lang: str,
     speed_mode: str,
-    genai_client: Optional[genai.client.Client], # Made optional
+    genai_client: Optional[genai.client.Client],
     config: Config
 ) -> None:
     """
@@ -106,24 +144,39 @@ async def translate_all_chunks(
     ... and so on for subsequent lines within the same block.
     """
 
-    logging.debug(f"Starting translation for {len(sub)} chunks...")
+    logging.info(f"Starting translation for {len(sub)} chunks...")
+    tasks = []
+    
+    # Create tasks for each chunk
+    for i, chunk in enumerate(sub):
+        task = _translate_single_chunk(
+            chunk_index=i,
+            chunk=chunk,
+            system_prompt=system_prompt,
+            speed_mode=speed_mode,
+            genai_client=genai_client,
+            config=config
+        )
+        tasks.append(task)
+    
+    # Run all tasks and collect errors
+    failed_chunks = []
     try:
-        async with asyncio.TaskGroup() as tg:
-            for i, chunk in enumerate(sub):
-                tg.create_task(
-                    _translate_single_chunk(
-                        chunk_index=i,
-                        chunk=chunk,
-                        system_prompt=system_prompt,
-                        speed_mode=speed_mode,
-                        genai_client=genai_client,
-                        config=config
-                    ),
-                    name=f"translate_chunk_{i}"
-            )
-
+        # Return_exceptions=True means gather will complete all tasks even if some fail
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Check results for exceptions
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                failed_chunks.append((i, result))
+                logging.error(f"Chunk {i} failed: {result}")
+        
+        if failed_chunks:
+            error_details = "\n".join(f"Chunk {i}: {err}" for i, err in failed_chunks)
+            raise ChunkTranslationError(f"Failed to translate chunks after all retries:\n{error_details}")
+        
         logging.debug("All chunks processed successfully.")
     except Exception as e:
-        # If any task fails (even after retries), gather will raise the first exception.
-        logging.error(f"Error during chunk translation: {e}")
-        raise ChunkTranslationError(f"Failed to translate one or more chunks: {e}") from e
+        # This will only happen for errors outside of the tasks themselves
+        logging.error(f"Error during chunk translation orchestration: {e}")
+        raise ChunkTranslationError(f"Failed to orchestrate chunk translation: {e}") from e
