@@ -8,7 +8,7 @@ project_root = Path(__file__).resolve().parents[2]
 src_root = project_root / 'src'
 sys.path.insert(0, str(src_root))
 
-from config_loader import load_config
+from core.config import get_settings
 from translator import init_genai_client, parse_srt, detect_context
 from translator import ContextDetectionError, ParsingError
 
@@ -49,14 +49,14 @@ def main():
     try:
         # 1. Load configuration
         logger.info("Loading configuration...")
-        config = load_config()
+        settings = get_settings()
 
         # Initialize GenAI client only if needed
         genai_client = None
         if args.speed_mode != "mock":
             logger.info("Initializing GenAI client...")
             try:
-                genai_client = init_genai_client(config)
+                genai_client = init_genai_client(settings)
                 logger.info("GenAI client initialized successfully.")
             except Exception as e:
                 logger.error(f"Failed to initialize GenAI client: {e}. Proceeding without client for context detection.")
@@ -69,7 +69,7 @@ def main():
         # 2. Parse the SRT file
         logger.info(f"Parsing SRT file: {srt_file_path}")
         # Pass the file path directly to parse_srt
-        parsed_subtitles = parse_srt(str(srt_file_path), chunk_max_blocks=config.chunk_max_blocks)
+        parsed_subtitles = parse_srt(str(srt_file_path), chunk_max_blocks=settings.CHUNK_MAX_BLOCKS)
         logger.info(f"Parsed {len(parsed_subtitles)} chunks.")
 
         # 3. Call detect_context
@@ -78,7 +78,7 @@ def main():
             sub=parsed_subtitles,
             speed_mode=args.speed_mode,
             genai_client=genai_client,  # Pass the initialized client (or None)
-            config=config
+            settings=settings
         )
 
         # 4. Print the result

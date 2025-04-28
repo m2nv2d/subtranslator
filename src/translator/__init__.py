@@ -4,7 +4,7 @@ from translator.chunk_translator import translate_all_chunks
 from translator.reassembler import reassemble_srt
 from translator.gemini_helper import init_genai_client
 
-from translator.models import Config, SubtitleBlock
+from translator.models import SubtitleBlock
 from translator.exceptions import (
     ConfigError,
     ValidationError,
@@ -22,7 +22,6 @@ __all__ = [
     "detect_context",
     "translate_all_chunks",
     "reassemble_srt",
-    "Config",
     "SubtitleBlock",
     "ConfigError",
     "ValidationError",

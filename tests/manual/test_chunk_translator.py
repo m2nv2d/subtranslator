@@ -9,7 +9,7 @@ project_root = Path(__file__).resolve().parents[2]
 src_root = project_root / 'src'
 sys.path.insert(0, str(src_root))
 
-from config_loader import load_config
+from core.config import get_settings
 from translator import init_genai_client, parse_srt, detect_context, translate_all_chunks
 from translator import ChunkTranslationError
 
@@ -50,8 +50,8 @@ async def main():
 
     # --- Load Configuration ---
     try:
-        config = load_config()
-        target_lang = config.target_languages[0]
+        settings = get_settings()
+        target_lang = settings.TARGET_LANGUAGES[0]
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
         return
@@ -61,7 +61,7 @@ async def main():
     if args.speed_mode != "mock":
         try:
             # Ensure API key is handled (e.g., via environment variables)
-            genai_client = init_genai_client(config=config)
+            genai_client = init_genai_client(settings)
             logging.info("Gemini client initialized.")
         except Exception as e:
             logging.error(f"Error initializing Gemini client: {e}. Cannot run 'real' mode.")
@@ -69,7 +69,7 @@ async def main():
 
     # --- Parse SRT File ---
     try:
-        subtitle_chunks = parse_srt(str(srt_file_path), config.chunk_max_blocks)
+        subtitle_chunks = parse_srt(str(srt_file_path), settings.CHUNK_MAX_BLOCKS)
         logging.info(f"Parsed {len(subtitle_chunks)} chunks from the file.")
         if not subtitle_chunks:
             logging.error("No subtitle chunks found in the file.")
@@ -88,7 +88,7 @@ async def main():
             sub=subtitle_chunks,
             speed_mode=args.speed_mode,
             genai_client=genai_client if args.speed_mode != "mock" else None,
-            config=config
+            settings=settings
         )
         if detected_context:
             logging.info(f"Detected Context: {detected_context}")
@@ -110,8 +110,8 @@ async def main():
             sub=subtitle_chunks,
             target_lang=target_lang,
             speed_mode=args.speed_mode,
-            genai_client=genai_client if args.speed_mode != "mock" else None,
-            config=config
+            client=genai_client if args.speed_mode != "mock" else None,
+            settings=settings
         )
         logging.info("Chunk translation completed.")
 

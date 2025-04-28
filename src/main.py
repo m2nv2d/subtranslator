@@ -19,9 +19,7 @@ from translator import (
     detect_context,
     reassemble_srt,
     translate_all_chunks,
-    Config,
     SubtitleBlock,
-    ConfigError,
     ValidationError,
     ParsingError,
     ContextDetectionError,
@@ -29,7 +27,9 @@ from translator import (
     GenAIClientInitError,
 )
 
-from dependencies import get_config, get_genai_client
+from core.config import Settings
+from core.errors import ErrorDetail, create_error_response
+from core.dependencies import get_application_settings, get_genai_client
 
 # Configure logging (this will be reconfigured once config is loaded via dependency)
 # We set a basic default level here
@@ -53,7 +53,7 @@ async def validation_error_handler(request: Request, exc: ValidationError):
     logger.warning(f"Validation Error: {exc}")
     return JSONResponse(
         status_code=400,
-        content={"error": str(exc)}
+        content=create_error_response(str(exc))
     )
 
 @app.exception_handler(ParsingError)
@@ -61,7 +61,7 @@ async def parsing_error_handler(request: Request, exc: ParsingError):
     logger.error(f"Parsing Error: {exc}", exc_info=True)
     return JSONResponse(
         status_code=422,
-        content={"error": str(exc)}
+        content=create_error_response(str(exc))
     )
 
 @app.exception_handler(ContextDetectionError)
@@ -69,7 +69,7 @@ async def context_detection_error_handler(request: Request, exc: ContextDetectio
     logger.error(f"Context Detection Error: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc)}
+        content=create_error_response(str(exc))
     )
 
 @app.exception_handler(ChunkTranslationError)
@@ -77,7 +77,7 @@ async def chunk_translation_error_handler(request: Request, exc: ChunkTranslatio
     logger.error(f"Chunk Translation Error: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc)}
+        content=create_error_response(str(exc))
     )
 
 @app.exception_handler(RetryError)
@@ -85,7 +85,7 @@ async def retry_error_handler(request: Request, exc: RetryError):
     logger.error(f"Retry Error after multiple attempts: {exc}", exc_info=True)
     return JSONResponse(
         status_code=504,
-        content={"error": "Service temporarily unavailable after multiple retries."}
+        content=create_error_response("Service temporarily unavailable after multiple retries.")
     )
 
 @app.exception_handler(HTTPException)
@@ -93,7 +93,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     logger.warning(f"HTTP Exception: {exc.status_code} - {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": exc.detail}
+        content=create_error_response(exc.detail)
     )
 
 @app.exception_handler(Exception)
@@ -101,22 +101,22 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled Exception: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"error": "An unexpected internal server error occurred."}
+        content=create_error_response("An unexpected internal server error occurred.")
     )
 
 # Routes
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, config: Annotated[Config, Depends(get_config)]):
+async def index(request: Request, settings: Annotated[Settings, Depends(get_application_settings)]):
     """Renders the main upload form."""
     logger.debug("Serving index page.")
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "languages": config.target_languages}
+        {"request": request, "languages": settings.TARGET_LANGUAGES}
     )
 
 @app.post("/translate")
 async def translate_srt(
-    config: Annotated[Config, Depends(get_config)],
+    settings: Annotated[Settings, Depends(get_application_settings)],
     genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
     file: UploadFile = File(...),
     target_lang: str = Form(...),
@@ -126,17 +126,17 @@ async def translate_srt(
     logger.info(f"Received request for /translate for target language '{target_lang}' with speed mode '{speed_mode}'")
 
     # Client Check (moved up slightly for clarity)
-    # Check if the client is needed based on speed_mode and config
-    client_required = speed_mode != "mock" and config.ai_provider == "google-gemini"
+    # Check if the client is needed based on speed_mode and settings
+    client_required = speed_mode != "mock" and settings.AI_PROVIDER == "google-gemini"
 
     if client_required and genai_client is None:
         # This covers two cases: provider is gemini but init failed, OR provider is not gemini
         # but speed_mode requires it (which shouldn't happen with proper config, but good to check)
-        if config.ai_provider != "google-gemini":
-             logger.error("Translation request failed: AI provider '%s' does not support non-mock translation.", config.ai_provider)
+        if settings.AI_PROVIDER != "google-gemini":
+             logger.error("Translation request failed: AI provider '%s' does not support non-mock translation.", settings.AI_PROVIDER)
              raise HTTPException(
                  status_code=501, # Not Implemented or 503 Service Unavailable?
-                 detail=f"Service Unavailable: AI provider '{config.ai_provider}' does not support non-mock translation."
+                 detail=f"Service Unavailable: AI provider '{settings.AI_PROVIDER}' does not support non-mock translation."
              )
         else:
              # Provider is gemini, but client failed to initialize
@@ -155,9 +155,9 @@ async def translate_srt(
         logger.warning("Translation request failed: Target language not specified.")
         raise ValidationError("Target language must be specified.")
 
-    if target_lang not in config.target_languages:
+    if target_lang not in settings.TARGET_LANGUAGES:
         logger.warning(f"Translation request failed: Invalid target language '{target_lang}'.")
-        raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(config.target_languages)}")
+        raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(settings.TARGET_LANGUAGES)}")
 
     # Secure filename and prepare temporary file path
     original_filename = secure_filename(file.filename)
@@ -177,7 +177,7 @@ async def translate_srt(
         # 1. Parse SRT
         logger.debug("Parsing SRT file...")
         subtitle_chunks: list[list[SubtitleBlock]] = parse_srt(
-            temp_file_path, config.chunk_max_blocks
+            temp_file_path, settings.CHUNK_MAX_BLOCKS
         )
         logger.info(f"Parsed SRT into {len(subtitle_chunks)} chunk(s).")
 
@@ -185,7 +185,7 @@ async def translate_srt(
         logger.debug("Detecting context...")
         # Pass the potentially None client - detect_context should handle mock mode without it
         context: str = detect_context(
-            subtitle_chunks, speed_mode, genai_client, config # Pass client here
+            subtitle_chunks, speed_mode, genai_client, settings # Pass settings here
         )
         logger.info(f"Detected context: '{context[:100]}...'")
 
@@ -197,34 +197,55 @@ async def translate_srt(
             sub=subtitle_chunks,
             target_lang=target_lang,
             speed_mode=speed_mode,
-            genai_client=genai_client, # Pass client here
-            config=config
+            client=genai_client,
+            settings=settings, # Pass settings here
+            retry_max_attempts=settings.RETRY_MAX_ATTEMPTS,
+            normal_model=settings.NORMAL_MODEL,
+            fast_model=settings.FAST_MODEL
         )
-        logger.info("Finished translating chunks.")
+        logger.info("Chunks translated successfully.")
 
         # 4. Reassemble SRT
-        reassembled_bytes: bytes = reassemble_srt(subtitle_chunks)
-        logger.info("Reassembled translated SRT.")
+        logger.debug("Reassembling SRT...")
+        output_srt_content = reassemble_srt(subtitle_chunks)
+        logger.info("SRT reassembled successfully.")
 
-        # Response Generation
-        logger.debug("Preparing file response...")
-        output_buffer = io.BytesIO(reassembled_bytes)
-        output_filename = f"{Path(original_filename).stem}_{target_lang}.srt"
-
-        logger.info(f"Sending translated file: {output_filename}")
+        # 5. Return translated SRT file
+        logger.info(f"Returning translated SRT for {original_filename} to {target_lang}")
+        new_filename = f"{os.path.splitext(original_filename)[0]}_{target_lang.lower()}.srt"
+        
         return StreamingResponse(
-            output_buffer,
-            media_type='text/srt',
-            headers={
-                'Content-Disposition': f'attachment; filename="{output_filename}"'
-            }
+            io.StringIO(output_srt_content),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename={new_filename}"}
         )
-
+    
+    except ValidationError as e:
+        logger.warning(f"Validation error during translation: {e}")
+        raise
+    except ParsingError as e:
+        logger.error(f"Error parsing SRT: {e}")
+        raise
+    except ContextDetectionError as e:
+        logger.error(f"Error detecting context: {e}")
+        raise
+    except ChunkTranslationError as e:
+        logger.error(f"Error translating chunks: {e}")
+        raise
+    except RetryError as e:
+        logger.error(f"Retry error after multiple attempts: {e}")
+        raise
+    except Exception as e:
+        logger.exception(f"Unhandled exception during translation: {e}")
+        # Convert generic exceptions to HTTP exceptions
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Clean up the temporary file and directory
+        # Clean up temporary files
         try:
-            os.remove(temp_file_path)
-            os.rmdir(temp_dir)
-            logger.debug(f"Cleaned up temporary file and directory: {temp_dir}")
-        except OSError as e:
-            logger.error(f"Error cleaning up temporary file {temp_file_path}: {e}")
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            if os.path.exists(temp_dir):
+                os.rmdir(temp_dir)
+            logger.debug("Temporary files cleaned up.")
+        except Exception as e:
+            logger.warning(f"Failed to clean up temporary files: {e}")

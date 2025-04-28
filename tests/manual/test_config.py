@@ -14,34 +14,35 @@ print(f"Project root added to sys.path: {project_root}")
 print("Attempting to import from src...")
 
 try:
-    from config_loader import load_config
-    # Import Config for potential type checking or direct use later, though load_config handles instantiation
-    from translator import Config
+    from core.config import get_settings, Settings
     print("Import successful.")
 except ImportError as e:
     print(f"ERROR: Failed to import required modules: {e}", file=sys.stderr)
     print("Please ensure:", file=sys.stderr)
     print(f"  1. The 'src' directory exists at: {project_root / 'src'}", file=sys.stderr)
-    print(f"  2. 'src/config_loader.py' and 'src/models.py' exist.", file=sys.stderr)
-    print(f"  3. You have necessary dependencies installed (e.g., python-dotenv). Try running `uv pip sync pyproject.toml` in {project_root}", file=sys.stderr)
+    print(f"  2. 'src/core/config.py' exists.", file=sys.stderr)
+    print(f"  3. You have necessary dependencies installed (e.g., pydantic-settings). Try running `uv pip sync pyproject.toml` in {project_root}", file=sys.stderr)
     sys.exit(1)
 
-print("\nAttempting to load configuration using load_config()...")
+print("\nAttempting to load configuration using get_settings()...")
 
 try:
     # Call the function to load configuration
-    config: Config = load_config()
+    settings: Settings = get_settings()
 
     # Print the loaded configuration object
     print("\n--- Loaded Configuration ---")
-    print(config)
+    print(f"AI Provider: {settings.AI_PROVIDER}")
+    print(f"API Key: {'[REDACTED]' if settings.AI_API_KEY else 'Not provided'}")
+    print(f"Fast Model: {settings.FAST_MODEL}")
+    print(f"Normal Model: {settings.NORMAL_MODEL}")
+    print(f"Target Languages: {settings.TARGET_LANGUAGES}")
+    print(f"Chunk Max Blocks: {settings.CHUNK_MAX_BLOCKS}")
+    print(f"Retry Max Attempts: {settings.RETRY_MAX_ATTEMPTS}")
+    print(f"Log Level: {settings.LOG_LEVEL}")
     print("--------------------------\n")
     print("Test script finished successfully.")
 
-except SystemExit as e:
-    # Catch the SystemExit raised by load_config if API key is missing
-    print(f"\nERROR: Exiting due to configuration error detected by load_config: {e}", file=sys.stderr)
-    sys.exit(1) # Propagate the exit
 except Exception as e:
     print(f"\nERROR: An unexpected error occurred during configuration loading: {e}", file=sys.stderr)
     logging.exception("Traceback for unexpected error:") # Log the full traceback if logging is configured

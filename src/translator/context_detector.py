@@ -6,18 +6,19 @@ from functools import wraps
 from google import genai
 
 from translator.exceptions import ContextDetectionError
-from translator.models import Config, SubtitleBlock
+from translator.models import SubtitleBlock
+from core.config import Settings
 
 logger = logging.getLogger(__name__)
 
 def configurable_retry(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        # Extract config from the function arguments
-        config = kwargs.get('config') or args[3]
+        # Extract settings from the function arguments
+        settings = kwargs.get('settings') or args[3]
         
         @retry(
-            stop=stop_after_attempt(config.retry_max_attempts),
+            stop=stop_after_attempt(settings.RETRY_MAX_ATTEMPTS),
             wait=wait_fixed(1),
             retry=retry_if_exception_type(Exception),
             reraise=True
@@ -33,7 +34,7 @@ def detect_context(
     sub: List[List[SubtitleBlock]],
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
-    config: Config,
+    settings: Settings,
 ) -> str:
     """Analyzes initial subtitle content to detect the general context.
 
@@ -41,7 +42,7 @@ def detect_context(
         sub: Parsed subtitle data, chunked.
         speed_mode: Processing mode ('mock', 'fast', 'normal').
         genai_client: Initialized GenAI client (required for 'fast'/'normal').
-        config: Application configuration.
+        settings: Application settings.
 
     Returns:
         A string representing the detected context.
@@ -63,7 +64,7 @@ def detect_context(
         request_prompt = f"{content}"
 
         # Call GenAI
-        model = config.fast_model if speed_mode == "fast" else config.normal_model
+        model = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
         detected_context = genai_client.models.generate_content(
                 model=model,
                 contents=[system_prompt, request_prompt]

@@ -9,36 +9,37 @@ import logging
 from google import genai
 from google.genai import types
 
-from translator.models import Config, SubtitleBlock
+from translator.models import SubtitleBlock
 from translator.exceptions import ChunkTranslationError
+from core.config import Settings
 
 def configurable_retry(f):
     @wraps(f)
     async def wrapper(*args, **kwargs):
-        # Extract config and chunk_index from the function arguments more safely
-        config = kwargs.get('config')
+        # Extract settings and chunk_index from the function arguments more safely
+        settings = kwargs.get('settings')
         chunk_index = kwargs.get('chunk_index')
         
         # If not in kwargs, try to find them in args by matching the function signature
-        if config is None or chunk_index is None:
+        if settings is None or chunk_index is None:
             # Get the parameter names from the function
             from inspect import signature
             sig = signature(f)
             param_names = list(sig.parameters.keys())
             
-            # Find positions of config and chunk_index in the signature
-            if config is None and 'config' in param_names:
-                config_pos = param_names.index('config')
-                if len(args) > config_pos:
-                    config = args[config_pos]
+            # Find positions of settings and chunk_index in the signature
+            if settings is None and 'settings' in param_names:
+                settings_pos = param_names.index('settings')
+                if len(args) > settings_pos:
+                    settings = args[settings_pos]
             
             if chunk_index is None and 'chunk_index' in param_names:
                 chunk_pos = param_names.index('chunk_index')
                 if len(args) > chunk_pos:
                     chunk_index = args[chunk_pos]
         
-        if config is None:
-            raise ValueError("Could not find config in arguments")
+        if settings is None:
+            raise ValueError("Could not find settings in arguments")
         if chunk_index is None:
             raise ValueError("Could not find chunk_index in arguments")
 
@@ -46,7 +47,7 @@ def configurable_retry(f):
         attempt_count = 0
 
         @retry(
-            stop=stop_after_attempt(config.retry_max_attempts),
+            stop=stop_after_attempt(settings.RETRY_MAX_ATTEMPTS),
             wait=wait_fixed(1),
             retry=retry_if_exception_type(Exception),
             before_sleep=before_sleep_log(logger, logging.INFO, exc_info=True),
@@ -57,13 +58,13 @@ def configurable_retry(f):
             attempt_count += 1
             try:
                 result = await f(*args, **kwargs)
-                logger.info(f"Chunk {chunk_index} succeeded on attempt {attempt_count}/{config.retry_max_attempts}")
+                logger.info(f"Chunk {chunk_index} succeeded on attempt {attempt_count}/{settings.RETRY_MAX_ATTEMPTS}")
                 return result
             except Exception as e:
-                if attempt_count >= config.retry_max_attempts:
+                if attempt_count >= settings.RETRY_MAX_ATTEMPTS:
                     logger.error(f"Chunk {chunk_index} failed after all {attempt_count} attempts")
                 else:
-                    logger.warning(f"Chunk {chunk_index} failed on attempt {attempt_count}/{config.retry_max_attempts}, retrying...")
+                    logger.warning(f"Chunk {chunk_index} failed on attempt {attempt_count}/{settings.RETRY_MAX_ATTEMPTS}, retrying...")
                 raise
         
         return await wrapped_f(*args, **kwargs)
@@ -76,7 +77,10 @@ async def _translate_single_chunk(
     system_prompt: str,
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
-    config: Config
+    settings: Settings,
+    retry_max_attempts: int = None,
+    normal_model: str = None,
+    fast_model: str = None
 ) -> None:
     """
     Translates a single chunk of subtitle blocks.
@@ -96,9 +100,12 @@ async def _translate_single_chunk(
         for i, block in enumerate(chunk):
             request_prompt += f"\n{i}\n{block.content}\n"
 
-        model = config.fast_model if speed_mode == "fast" else config.normal_model
+        model_to_use = fast_model if speed_mode == "fast" else normal_model
+        if model_to_use is None:
+            model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+            
         response = await genai_client.aio.models.generate_content(
-            model=model,
+            model=model_to_use,
             contents=[system_prompt, request_prompt],
             config=types.GenerateContentConfig(
             response_mime_type='application/json',
@@ -128,8 +135,11 @@ async def translate_all_chunks(
     sub: List[List[SubtitleBlock]],
     target_lang: str,
     speed_mode: str,
-    genai_client: Optional[genai.client.Client],
-    config: Config
+    client: Optional[genai.client.Client],
+    settings: Settings,
+    retry_max_attempts: int = None,
+    normal_model: str = None,
+    fast_model: str = None
 ) -> None:
     """
     Orchestrates the concurrent translation of multiple subtitle chunks.
@@ -154,8 +164,11 @@ async def translate_all_chunks(
             chunk=chunk,
             system_prompt=system_prompt,
             speed_mode=speed_mode,
-            genai_client=genai_client,
-            config=config
+            genai_client=client,
+            settings=settings,
+            retry_max_attempts=retry_max_attempts,
+            normal_model=normal_model,
+            fast_model=fast_model
         )
         tasks.append(task)
     
