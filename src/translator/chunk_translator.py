@@ -50,7 +50,7 @@ def configurable_retry(f):
             stop=stop_after_attempt(settings.RETRY_MAX_ATTEMPTS),
             wait=wait_fixed(1),
             retry=retry_if_exception_type(Exception),
-            before_sleep=before_sleep_log(logger, logging.INFO, exc_info=True),
+            before_sleep=before_sleep_log(logger, logging.INFO, exc_info=False),
             reraise=True
         )
         async def wrapped_f(*args, **kwargs):
