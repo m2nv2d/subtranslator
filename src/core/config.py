@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         gt=0
     )
     RETRY_MAX_ATTEMPTS: int = Field(
-        default=6,
+        default=4,
         description="Maximum number of retry attempts for failed operations",
         ge=0
     )
@@ -105,7 +105,7 @@ def get_settings() -> Settings:
     """
     try:
         # Find project root to locate .env file
-        project_root = Path(__file__).resolve().parent.parent.parent
+        project_root = Path(__file__).resolve().parent[3]
         dotenv_path = project_root / '.env'
         
         # Initialize settings

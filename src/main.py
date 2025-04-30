@@ -7,21 +7,13 @@ from fastapi.staticfiles import StaticFiles
 from tenacity import RetryError
 
 from translator import (
-    parse_srt,
-    detect_context,
-    reassemble_srt,
-    translate_all_chunks,
-    SubtitleBlock,
     ValidationError,
     ParsingError,
     ContextDetectionError,
     ChunkTranslationError,
-    GenAIClientInitError,
 )
 
-from core.config import Settings
-from core.errors import ErrorDetail, create_error_response
-from core.dependencies import get_application_settings, get_genai_client
+from core.errors import create_error_response
 
 # Import the router
 from routers.translate import router as translate_router

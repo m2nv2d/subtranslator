@@ -1,49 +1,63 @@
+#!/usr/bin/env python3
+"""
+Manual test script to verify that Pydantic Settings correctly loads
+configuration from the actual .env file.
+
+Usage:
+    1. Make sure you have a .env file in the project root
+    2. Run this script with: uv run tests/manual/test_pydantic_config.py
+"""
+
 import sys
-from pathlib import Path
+import os
 import logging
+from pathlib import Path
 
-# Add project root's src to sys.path
-project_root = Path(__file__).resolve().parents[2]
-src_root = project_root / 'src'
-sys.path.insert(0, str(src_root))
+# Add project root to sys.path to enable absolute imports
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root))
+sys.path.append(str(project_root / "src"))
 
-# Configure logging for the test script itself if needed
-logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s') # Optional: uncomment if script-specific logging needed
+from core.config import Settings
 
-print(f"Project root added to sys.path: {project_root}")
-print("Attempting to import from src...")
 
-try:
-    from core.config import get_settings, Settings
-    print("Import successful.")
-except ImportError as e:
-    print(f"ERROR: Failed to import required modules: {e}", file=sys.stderr)
-    print("Please ensure:", file=sys.stderr)
-    print(f"  1. The 'src' directory exists at: {project_root / 'src'}", file=sys.stderr)
-    print(f"  2. 'src/core/config.py' exists.", file=sys.stderr)
-    print(f"  3. You have necessary dependencies installed (e.g., pydantic-settings). Try running `uv pip sync pyproject.toml` in {project_root}", file=sys.stderr)
-    sys.exit(1)
-
-print("\nAttempting to load configuration using get_settings()...")
-
-try:
-    # Call the function to load configuration
-    settings: Settings = get_settings()
-
-    # Print the loaded configuration object
-    print("\n--- Loaded Configuration ---")
-    print(f"AI Provider: {settings.AI_PROVIDER}")
-    print(f"API Key: {'[REDACTED]' if settings.AI_API_KEY else 'Not provided'}")
-    print(f"Fast Model: {settings.FAST_MODEL}")
-    print(f"Normal Model: {settings.NORMAL_MODEL}")
-    print(f"Target Languages: {settings.TARGET_LANGUAGES}")
-    print(f"Chunk Max Blocks: {settings.CHUNK_MAX_BLOCKS}")
-    print(f"Retry Max Attempts: {settings.RETRY_MAX_ATTEMPTS}")
-    print(f"Log Level: {settings.LOG_LEVEL}")
-    print("--------------------------\n")
-    print("Test script finished successfully.")
-
-except Exception as e:
-    print(f"\nERROR: An unexpected error occurred during configuration loading: {e}", file=sys.stderr)
-    logging.exception("Traceback for unexpected error:") # Log the full traceback if logging is configured
-    sys.exit(1)
+if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    
+    logger.info("Testing Pydantic Settings configuration loading from .env file")
+    
+    # Find the actual .env file
+    env_path = project_root / '.env'
+    
+    if not env_path.exists():
+        logger.error(f"Error: .env file not found at {env_path}")
+        logger.info("Please create a .env file in the project root with the necessary configuration.")
+        sys.exit(1)
+    
+    logger.info(f"Using .env file at: {env_path}")
+    
+    try:
+        # Load settings directly
+        settings = Settings()
+        
+        # Log the loaded settings
+        logger.info("Configuration loaded successfully!")
+        logger.info(f"AI Provider: {settings.AI_PROVIDER}")
+        logger.info(f"API Key: {'[REDACTED]' if settings.AI_API_KEY else 'Not provided'}")
+        logger.info(f"Fast Model: {settings.FAST_MODEL}")
+        logger.info(f"Normal Model: {settings.NORMAL_MODEL}")
+        logger.info(f"Target Languages: {settings.TARGET_LANGUAGES}")
+        logger.info(f"Chunk Max Blocks: {settings.CHUNK_MAX_BLOCKS}")
+        logger.info(f"Retry Max Attempts: {settings.RETRY_MAX_ATTEMPTS}")
+        logger.info(f"Log Level: {settings.LOG_LEVEL}")
+        
+        logger.info("\nConfiguration test completed successfully!")
+    
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}", exc_info=True)
+        sys.exit(1) 

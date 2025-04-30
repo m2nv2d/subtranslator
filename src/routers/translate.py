@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 import os
@@ -7,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from google import genai
 from tenacity import RetryError
@@ -24,11 +23,9 @@ from translator import (
     ParsingError,
     ContextDetectionError,
     ChunkTranslationError,
-    GenAIClientInitError,
 )
 
 from core.config import Settings
-from core.errors import ErrorDetail, create_error_response
 from core.dependencies import get_application_settings, get_genai_client
 
 logger = logging.getLogger(__name__)
@@ -122,7 +119,7 @@ async def translate_srt(
         logger.debug("Detecting context...")
         # Pass the potentially None client - detect_context should handle mock mode without it
         context: str = await detect_context(
-            subtitle_chunks, speed_mode, genai_client, settings # Pass settings here
+            subtitle_chunks, speed_mode, genai_client, settings
         )
         logger.info(f"Detected context: '{context[:100]}...'")
 
@@ -135,7 +132,7 @@ async def translate_srt(
             target_lang=target_lang,
             speed_mode=speed_mode,
             client=genai_client,
-            settings=settings, # Pass settings here
+            settings=settings,
             retry_max_attempts=settings.RETRY_MAX_ATTEMPTS,
             normal_model=settings.NORMAL_MODEL,
             fast_model=settings.FAST_MODEL
