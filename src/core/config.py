@@ -105,7 +105,7 @@ def get_settings() -> Settings:
     """
     try:
         # Find project root to locate .env file
-        project_root = Path(__file__).resolve().parent[3]
+        project_root = Path(__file__).resolve().parent.parent.parent
         dotenv_path = project_root / '.env'
         
         # Initialize settings

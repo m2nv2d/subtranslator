@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 from pathlib import Path
 import sys
 import os
@@ -11,7 +12,7 @@ sys.path.insert(0, str(src_root))
 from translator import parse_srt
 from translator import ValidationError, ParsingError
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="Debug script for SRT parser.")
     parser.add_argument(
         "name",
@@ -33,7 +34,7 @@ def main():
     try:
         print(f"Parsing '{srt_file_path}' with max_blocks={max_blocks_per_chunk}...")
         # Call the parser function directly with the file path
-        chunks = parse_srt(str(srt_file_path), max_blocks_per_chunk)
+        chunks = await parse_srt(str(srt_file_path), max_blocks_per_chunk)
 
         print(f"\nSuccessfully parsed. Number of chunks created: {len(chunks)}")
 
@@ -61,4 +62,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

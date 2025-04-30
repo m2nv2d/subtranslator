@@ -66,6 +66,9 @@ def configurable_retry(f):
                 else:
                     logger.warning(f"Chunk {chunk_index} failed on attempt {attempt_count}/{settings.RETRY_MAX_ATTEMPTS}, retrying...")
                 raise
+            except asyncio.CancelledError: # Handle cancellation explicitly
+                logger.warning(f"Chunk {chunk_index} translation was cancelled on attempt {attempt_count}")
+                raise # Re-raise CancelledError to stop retries
         
         return await wrapped_f(*args, **kwargs)
     return wrapper
@@ -108,7 +111,8 @@ async def _translate_single_chunk(
             model=model_to_use,
             contents=[system_prompt, request_prompt],
             config=types.GenerateContentConfig(
-            response_mime_type='application/json',
+                response_mime_type='application/json',
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
             )
         )
 
@@ -142,54 +146,58 @@ async def translate_all_chunks(
     fast_model: str = None
 ) -> None:
     """
-    Orchestrates the concurrent translation of multiple subtitle chunks.
+    Orchestrates the concurrent translation of multiple subtitle chunks using TaskGroup.
     """
     system_prompt = f"""
     You're a video subtitle translator. {context} I'll give you content of srt subtitle blocks, including its index. You should translate it into {target_lang}.
 
-    Make sure to return in structured JSON array [...]. Each item inside the array will be a JSON object {...} following the structure:
+    Make sure to return in structured JSON array [...]. Each item inside the array will be a JSON object {{...}} following the structure:
     "index": The original index of the subtitle block.
     "translated_line_1": The first line of the translation.
     "translated_line_2": The second line (if it exists).
     ... and so on for subsequent lines within the same block.
     """
 
-    logging.info(f"Starting translation for {len(sub)} chunks...")
-    tasks = []
-    
-    # Create tasks for each chunk
-    for i, chunk in enumerate(sub):
-        task = _translate_single_chunk(
-            chunk_index=i,
-            chunk=chunk,
-            system_prompt=system_prompt,
-            speed_mode=speed_mode,
-            genai_client=client,
-            settings=settings,
-            retry_max_attempts=retry_max_attempts,
-            normal_model=normal_model,
-            fast_model=fast_model
-        )
-        tasks.append(task)
-    
-    # Run all tasks and collect errors
-    failed_chunks = []
+    logging.info(f"Starting translation for {len(sub)} chunks using TaskGroup...")
+    failed_chunks = {} # Store failed chunk index and the exception
+
     try:
-        # Return_exceptions=True means gather will complete all tasks even if some fail
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Check results for exceptions
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                failed_chunks.append((i, result))
-                logging.error(f"Chunk {i} failed: {result}")
-        
-        if failed_chunks:
-            error_details = "\n".join(f"Chunk {i}: {err}" for i, err in failed_chunks)
-            raise ChunkTranslationError(f"Failed to translate chunks after all retries:\n{error_details}")
-        
-        logging.debug("All chunks processed successfully.")
-    except Exception as e:
-        # This will only happen for errors outside of the tasks themselves
-        logging.error(f"Error during chunk translation orchestration: {e}")
-        raise ChunkTranslationError(f"Failed to orchestrate chunk translation: {e}") from e
+        async with asyncio.TaskGroup() as tg:
+            # Create tasks for each chunk within the TaskGroup
+            for i, chunk in enumerate(sub):
+                tg.create_task(
+                    _translate_single_chunk(
+                        chunk_index=i,
+                        chunk=chunk,
+                        system_prompt=system_prompt,
+                        speed_mode=speed_mode,
+                        genai_client=client,
+                        settings=settings,
+                        retry_max_attempts=retry_max_attempts,
+                        normal_model=normal_model,
+                        fast_model=fast_model
+                    ),
+                    name=f"translate_chunk_{i}" # Optional: name the task for easier debugging
+                )
+        # If TaskGroup finishes without exceptions, all tasks succeeded.
+        logging.info("All chunks processed successfully via TaskGroup.")
+
+    except* ChunkTranslationError as eg: # Catch ChunkTranslationError exceptions from tasks
+        for error in eg.exceptions:
+            # Attempt to find the chunk index from the error or task context if possible
+            # This part is tricky as the context isn't directly available in the ExceptionGroup
+            # For now, just log the errors
+            logging.error(f"A chunk translation failed: {error}")
+            # We could potentially parse the error message if it contains the chunk index,
+            # or enhance _translate_single_chunk to include index in its exceptions.
+            # For simplicity now, we'll just collect the errors.
+            # Example: If ChunkTranslationError included chunk_index: failed_chunks[error.chunk_index] = error
+            failed_chunks[error.chunk_index] = error
+        error_details = "\n".join(f"Chunk Error: {err}" for err in eg.exceptions)
+        raise ChunkTranslationError(f"Failed to translate one or more chunks:\n{error_details}") from eg
+
+    except* Exception as eg: # Catch any other unexpected exceptions from tasks
+        logging.error(f"Unexpected error during chunk translation orchestration: {eg}")
+        error_details = "\n".join(f"Unexpected Error: {err}" for err in eg.exceptions)
+        # Consider if _translate_single_chunk should wrap all its errors in ChunkTranslationError
+        raise ChunkTranslationError(f"Unexpected errors during chunk translation:\n{error_details}") from eg

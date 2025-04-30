@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import logging
 import sys
@@ -14,7 +15,7 @@ from translator import ContextDetectionError, ParsingError
 
 logger = logging.getLogger(__name__)
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="Debug script for context_detector.")
     parser.add_argument(
         "name",
@@ -39,9 +40,12 @@ def main():
 
     # Setup logging with user-specified level
     logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        level=args.log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+    
+    for pkg in ["httpx", "google_genai"]:
+        logging.getLogger(pkg).setLevel(logging.WARNING)
 
     srt_file_path = project_root / 'tests' / 'samples' / f"{args.name}.srt"
     logger.info(f"Starting debug script for {srt_file_path} with mode '{args.speed_mode}'...")
@@ -69,12 +73,12 @@ def main():
         # 2. Parse the SRT file
         logger.info(f"Parsing SRT file: {srt_file_path}")
         # Pass the file path directly to parse_srt
-        parsed_subtitles = parse_srt(str(srt_file_path), chunk_max_blocks=settings.CHUNK_MAX_BLOCKS)
+        parsed_subtitles = await parse_srt(str(srt_file_path), chunk_max_blocks=settings.CHUNK_MAX_BLOCKS)
         logger.info(f"Parsed {len(parsed_subtitles)} chunks.")
 
         # 3. Call detect_context
         logger.info(f"Calling detect_context in '{args.speed_mode}' mode...")
-        detected_context = detect_context(
+        detected_context = await detect_context(
             sub=parsed_subtitles,
             speed_mode=args.speed_mode,
             genai_client=genai_client,  # Pass the initialized client (or None)
@@ -98,4 +102,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

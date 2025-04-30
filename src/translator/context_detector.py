@@ -5,6 +5,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_t
 from functools import wraps
 
 from google import genai
+from google.genai import types
 
 from translator.exceptions import ContextDetectionError
 from translator.models import SubtitleBlock
@@ -68,7 +69,10 @@ async def detect_context(
         model = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
         response = await genai_client.aio.models.generate_content(
                 model=model,
-                contents=[system_prompt, request_prompt]
+                contents=[system_prompt, request_prompt],
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=0)
+                )
         )
         return response.text
 

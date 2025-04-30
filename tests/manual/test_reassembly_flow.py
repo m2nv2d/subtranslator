@@ -38,10 +38,16 @@ async def main():
     
     srt_file_path = project_root / 'tests' / 'samples' / f"{args.name}.srt"
 
-    logging.basicConfig(level=args.log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logging.info(f"Running test with srt_file: {srt_file_path}, speed_mode: {args.speed_mode}")
+    # Setup logging with user-specified level
+    logging.basicConfig(
+        level=args.log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     for pkg in ["httpx", "google_genai"]:
         logging.getLogger(pkg).setLevel(logging.WARNING)
+
+
+    logging.info(f"Running test with srt_file: {srt_file_path}, speed_mode: {args.speed_mode}")
 
     # --- Load Configuration ---
     try:
@@ -64,7 +70,7 @@ async def main():
 
     # --- Parse SRT File ---
     try:
-        subtitle_chunks = parse_srt(str(srt_file_path), settings.CHUNK_MAX_BLOCKS)
+        subtitle_chunks = await parse_srt(str(srt_file_path), settings.CHUNK_MAX_BLOCKS)
         logging.info(f"Parsed {len(subtitle_chunks)} chunks from the file.")
         if not subtitle_chunks:
             logging.error("No subtitle chunks found in the file.")
@@ -78,7 +84,7 @@ async def main():
 
     # --- Detect Context ---
     try:
-        detected_context = detect_context(
+        detected_context = await detect_context(
             sub=subtitle_chunks,
             speed_mode=args.speed_mode,
             genai_client=genai_client if args.speed_mode != "mock" else None,
