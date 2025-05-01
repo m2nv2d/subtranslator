@@ -95,6 +95,11 @@ async def translate_srt(
         logger.warning(f"Translation request failed: Invalid target language '{target_lang}'.")
         raise ValidationError(f"Invalid target language: {target_lang}. Available: {', '.join(settings.TARGET_LANGUAGES)}")
 
+    allowed_speed_modes = {"fast", "normal", "mock"}
+    if speed_mode not in allowed_speed_modes:
+        logger.warning(f"Translation request failed: Invalid speed mode '{speed_mode}'.")
+        raise ValidationError(f"Invalid speed mode: '{speed_mode}'. Allowed modes: {', '.join(allowed_speed_modes)}")
+
     # Secure filename and prepare temporary file path
     original_filename = secure_filename(file.filename)
     temp_dir = None  # Initialize temp_dir to None
