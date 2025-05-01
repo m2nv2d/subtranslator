@@ -2,10 +2,11 @@ import io
 import logging
 import os
 import tempfile
+import shutil
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from google import genai
@@ -51,7 +52,6 @@ async def index(request: Request, settings: Annotated[Settings, Depends(get_appl
 async def translate_srt(
     settings: Annotated[Settings, Depends(get_application_settings)],
     genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")
@@ -95,10 +95,11 @@ async def translate_srt(
 
     # Secure filename and prepare temporary file path
     original_filename = secure_filename(file.filename)
-    temp_dir = tempfile.mkdtemp()
-    temp_file_path = os.path.join(temp_dir, original_filename)
-
+    temp_dir = None  # Initialize temp_dir to None
     try:
+        temp_dir = tempfile.mkdtemp() # Create temp dir inside try
+        temp_file_path = os.path.join(temp_dir, original_filename)
+
         # Save uploaded file asynchronously
         content = await file.read()
         async with aiofiles.open(temp_file_path, "wb") as temp_file:
@@ -133,9 +134,6 @@ async def translate_srt(
             speed_mode=speed_mode,
             client=genai_client,
             settings=settings,
-            retry_max_attempts=settings.RETRY_MAX_ATTEMPTS,
-            normal_model=settings.NORMAL_MODEL,
-            fast_model=settings.FAST_MODEL
         )
         logger.info("Chunks translated successfully.")
 
@@ -147,13 +145,6 @@ async def translate_srt(
         # 5. Return translated SRT file
         logger.info(f"Returning translated SRT for {original_filename} to {target_lang}")
         new_filename = f"{os.path.splitext(original_filename)[0]}_{target_lang.lower()}.srt"
-        
-        # Schedule cleanup as background tasks
-        if os.path.exists(temp_file_path):
-            background_tasks.add_task(os.unlink, temp_file_path)
-        if os.path.exists(temp_dir):
-            background_tasks.add_task(os.rmdir, temp_dir)
-        logger.debug("Temporary file cleanup scheduled as background tasks.")
         
         return StreamingResponse(
             io.BytesIO(output_srt_content.encode('utf-8') if isinstance(output_srt_content, str) else output_srt_content),
@@ -178,5 +169,12 @@ async def translate_srt(
         raise
     except Exception as e:
         logger.exception(f"Unhandled exception during translation: {e}")
-        # Convert generic exceptions to HTTP exceptions
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Ensure cleanup happens regardless of success or failure
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.debug(f"Successfully removed temporary directory: {temp_dir}")
+            except OSError as e:
+                logger.error(f"Error removing temporary directory {temp_dir}: {e}")

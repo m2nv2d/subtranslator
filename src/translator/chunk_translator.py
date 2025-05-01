@@ -20,24 +20,6 @@ def configurable_retry(f):
         settings = kwargs.get('settings')
         chunk_index = kwargs.get('chunk_index')
         
-        # If not in kwargs, try to find them in args by matching the function signature
-        if settings is None or chunk_index is None:
-            # Get the parameter names from the function
-            from inspect import signature
-            sig = signature(f)
-            param_names = list(sig.parameters.keys())
-            
-            # Find positions of settings and chunk_index in the signature
-            if settings is None and 'settings' in param_names:
-                settings_pos = param_names.index('settings')
-                if len(args) > settings_pos:
-                    settings = args[settings_pos]
-            
-            if chunk_index is None and 'chunk_index' in param_names:
-                chunk_pos = param_names.index('chunk_index')
-                if len(args) > chunk_pos:
-                    chunk_index = args[chunk_pos]
-        
         if settings is None:
             raise ValueError("Could not find settings in arguments")
         if chunk_index is None:
@@ -81,9 +63,6 @@ async def _translate_single_chunk(
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
     settings: Settings,
-    retry_max_attempts: int = None,
-    normal_model: str = None,
-    fast_model: str = None
 ) -> None:
     """
     Translates a single chunk of subtitle blocks.
@@ -103,9 +82,7 @@ async def _translate_single_chunk(
         for i, block in enumerate(chunk):
             request_prompt += f"\n{i}\n{block.content}\n"
 
-        model_to_use = fast_model if speed_mode == "fast" else normal_model
-        if model_to_use is None:
-            model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+        model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
             
         response = await genai_client.aio.models.generate_content(
             model=model_to_use,
@@ -141,9 +118,6 @@ async def translate_all_chunks(
     speed_mode: str,
     client: Optional[genai.client.Client],
     settings: Settings,
-    retry_max_attempts: int = None,
-    normal_model: str = None,
-    fast_model: str = None
 ) -> None:
     """
     Orchestrates the concurrent translation of multiple subtitle chunks using TaskGroup.
@@ -173,9 +147,6 @@ async def translate_all_chunks(
                         speed_mode=speed_mode,
                         genai_client=client,
                         settings=settings,
-                        retry_max_attempts=retry_max_attempts,
-                        normal_model=normal_model,
-                        fast_model=fast_model
                     ),
                     name=f"translate_chunk_{i}" # Optional: name the task for easier debugging
                 )
