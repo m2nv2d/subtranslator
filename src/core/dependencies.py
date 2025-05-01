@@ -43,6 +43,7 @@ def get_application_settings() -> Settings:
             detail="Server Configuration Error: Failed to load configuration."
         )
 
+@functools.lru_cache()
 def get_genai_client(settings: Settings = Depends(get_application_settings)) -> genai.client.Client | None:
     """Dependency provider for the Generative AI client.
 
@@ -66,6 +67,7 @@ def get_genai_client(settings: Settings = Depends(get_application_settings)) -> 
         logger.error(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
         return None 
 
+@functools.lru_cache()
 def get_translation_semaphore(settings: Settings = Depends(get_application_settings)) -> asyncio.Semaphore:
     """Dependency provider for the global translation semaphore.
 
