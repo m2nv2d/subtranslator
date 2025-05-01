@@ -1,7 +1,7 @@
 import math
-import os
 import srt
 import aiofiles
+import aiofiles.os
 from typing import List
 
 from translator.exceptions import ParsingError, ValidationError
@@ -30,7 +30,8 @@ async def parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[Subtitle
 
     # Check file size
     try:
-        file_size = os.path.getsize(file_path)
+        stat_result = await aiofiles.os.stat(file_path)
+        file_size = stat_result.st_size
     except OSError as e:
         raise ValidationError(f"Could not access file: {e}")
 
