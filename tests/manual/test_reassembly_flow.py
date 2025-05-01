@@ -68,6 +68,11 @@ async def main():
             logging.error(f"Error initializing Gemini client: {e}. Cannot run 'real' mode.")
             return
 
+    # --- Initialize Semaphore ---
+    # Since this runs outside FastAPI, manually create the semaphore
+    semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_TRANSLATIONS)
+    logging.info(f"Manual test: Initialized semaphore with limit {settings.MAX_CONCURRENT_TRANSLATIONS}")
+
     # --- Parse SRT File ---
     try:
         subtitle_chunks = await parse_srt(str(srt_file_path), settings.CHUNK_MAX_BLOCKS)
@@ -110,7 +115,8 @@ async def main():
             target_lang=target_lang,
             speed_mode=args.speed_mode,
             client=genai_client if args.speed_mode != "mock" else None,
-            settings=settings
+            settings=settings,
+            semaphore=semaphore # Pass the manually created semaphore
         )
         logging.info("Chunk translation completed.")
 

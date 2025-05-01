@@ -55,6 +55,7 @@ if __name__ == "__main__":
         logger.info(f"Chunk Max Blocks: {settings.CHUNK_MAX_BLOCKS}")
         logger.info(f"Retry Max Attempts: {settings.RETRY_MAX_ATTEMPTS}")
         logger.info(f"Log Level: {settings.LOG_LEVEL}")
+        logger.info(f"Max Concurrent Translations: {settings.MAX_CONCURRENT_TRANSLATIONS}")
         
         logger.info("\nConfiguration test completed successfully!")
     

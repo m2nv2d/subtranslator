@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import shutil
+import asyncio
 from pathlib import Path
 from typing import Annotated
 
@@ -27,7 +28,7 @@ from translator import (
 )
 
 from core.config import Settings
-from core.dependencies import get_application_settings, get_genai_client
+from core.dependencies import get_application_settings, get_genai_client, get_translation_semaphore
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ async def index(request: Request, settings: Annotated[Settings, Depends(get_appl
 async def translate_srt(
     settings: Annotated[Settings, Depends(get_application_settings)],
     genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
+    semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")
@@ -134,6 +136,7 @@ async def translate_srt(
             speed_mode=speed_mode,
             client=genai_client,
             settings=settings,
+            semaphore=semaphore,
         )
         logger.info("Chunks translated successfully.")
 

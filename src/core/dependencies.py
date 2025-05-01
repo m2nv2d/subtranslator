@@ -1,6 +1,7 @@
 import functools
 import logging
 import sys
+import asyncio
 
 from core.config import get_settings, Settings
 from fastapi import Depends, HTTPException
@@ -12,6 +13,8 @@ from translator.gemini_helper import init_genai_client
 
 logger = logging.getLogger(__name__)
 
+# Global semaphore instance, initialized later in get_translation_semaphore
+_translation_semaphore: asyncio.Semaphore | None = None
 
 @functools.lru_cache()
 def get_application_settings() -> Settings:
@@ -73,3 +76,16 @@ def get_genai_client(settings: Settings = Depends(get_application_settings)) -> 
     except Exception as e:
         logger.error(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
         return None 
+
+def get_translation_semaphore(settings: Settings = Depends(get_application_settings)) -> asyncio.Semaphore:
+    """Dependency provider for the global translation semaphore.
+
+    Initializes the semaphore on first call using the configured limit
+    and returns the same instance on subsequent calls.
+    """
+    global _translation_semaphore
+    if _translation_semaphore is None:
+        limit = settings.MAX_CONCURRENT_TRANSLATIONS
+        logger.info(f"Initializing global translation semaphore with limit: {limit}")
+        _translation_semaphore = asyncio.Semaphore(limit)
+    return _translation_semaphore 

@@ -63,53 +63,61 @@ async def _translate_single_chunk(
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
     settings: Settings,
+    semaphore: asyncio.Semaphore,
 ) -> None:
     """
     Translates a single chunk of subtitle blocks.
 
     Applies retry logic based on the provided configuration.
     Currently implements 'mock' translation and has a placeholder for real translation.
+    Acquires a semaphore slot before performing the translation.
     """
+    async with semaphore: # Acquire semaphore lock
+        if speed_mode == "mock":
+            # Mock Logic: Copy original content to translated_content
+            for block in chunk:
+                block.translated_content = block.content
+            await asyncio.sleep(0.1)
+            print(f"Chunk {chunk_index} processed (mock).")
+        else:
+            request_prompt = ""
+            for i, block in enumerate(chunk):
+                request_prompt += f"\n{i}\n{block.content}\n"
 
-    if speed_mode == "mock":
-        # Mock Logic: Copy original content to translated_content
-        for block in chunk:
-            block.translated_content = block.content
-        await asyncio.sleep(0.1)
-        print(f"Chunk {chunk_index} processed (mock).")
-    else:
-        request_prompt = ""
-        for i, block in enumerate(chunk):
-            request_prompt += f"\n{i}\n{block.content}\n"
-
-        model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
-            
-        response = await genai_client.aio.models.generate_content(
-            model=model_to_use,
-            contents=[system_prompt, request_prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type='application/json',
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+                
+            response = await genai_client.aio.models.generate_content(
+                model=model_to_use,
+                contents=[system_prompt, request_prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type='application/json',
+                    thinking_config=types.ThinkingConfig(thinking_budget=0)
+                )
             )
-        )
 
-        # Parse response
-        try:
-            translated_json = json.loads(response.text)
-            for block in translated_json:
-                block_index = block['index']
-                translated_lines = ""
-                i = 1
-                while f'translated_line_{i}' in block:
-                    if translated_lines:
-                        translated_lines += "\n"
-                    translated_lines += block[f'translated_line_{i}']
-                    i += 1
-                chunk[block_index].translated_content = translated_lines
-            logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response.text}\n-----END-----\n")            
+            # Parse response
+            try:
+                translated_json = json.loads(response.text)
+                for block_data in translated_json: # Renamed block to block_data
+                    block_index = block_data['index'] # Use block_data
+                    translated_lines = ""
+                    i = 1
+                    while f'translated_line_{i}' in block_data: # Use block_data
+                        if translated_lines:
+                            translated_lines += "\n"
+                        translated_lines += block_data[f'translated_line_{i}'] # Use block_data
+                        i += 1
+                    chunk[block_index].translated_content = translated_lines
+                logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response.text}\n-----END-----\n")            
 
-        except json.JSONDecodeError:
-            raise ChunkTranslationError(f"Failed to parse JSON response")
+            except json.JSONDecodeError:
+                raise ChunkTranslationError(f"Failed to parse JSON response")
+            except IndexError:
+                # Handle potential IndexError if block_index is out of bounds
+                raise ChunkTranslationError(f"Invalid block index {block_index} received in translation response for chunk {chunk_index}.")
+            except KeyError as e:
+                 # Handle potential KeyError if 'index' or 'translated_line_x' is missing
+                raise ChunkTranslationError(f"Missing key {e} in translation response for chunk {chunk_index}.")
 
 async def translate_all_chunks(
     context: str,
@@ -118,6 +126,7 @@ async def translate_all_chunks(
     speed_mode: str,
     client: Optional[genai.client.Client],
     settings: Settings,
+    semaphore: asyncio.Semaphore,
 ) -> None:
     """
     Orchestrates the concurrent translation of multiple subtitle chunks using TaskGroup.
@@ -147,6 +156,7 @@ async def translate_all_chunks(
                         speed_mode=speed_mode,
                         genai_client=client,
                         settings=settings,
+                        semaphore=semaphore,
                     ),
                     name=f"translate_chunk_{i}" # Optional: name the task for easier debugging
                 )

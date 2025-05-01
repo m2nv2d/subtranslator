@@ -38,6 +38,11 @@ class Settings(BaseSettings):
         default="INFO",
         description="Logging level"
     )
+    MAX_CONCURRENT_TRANSLATIONS: int = Field(
+        default=10,
+        description="Maximum number of concurrent translation tasks allowed application-wide",
+        gt=0
+    )
     
     # Configure .env file support
     model_config = SettingsConfigDict(
