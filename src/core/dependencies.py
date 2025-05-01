@@ -28,16 +28,6 @@ def get_application_settings() -> Settings:
         # Get the settings from the Pydantic model
         settings = get_settings()
         
-        # Configure logging
-        log_level_str = settings.LOG_LEVEL.upper()
-        log_level = getattr(logging, log_level_str, logging.INFO)
-        logging.basicConfig(
-            level=log_level,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            force=True
-        )
-        logger.info(f"Logging reconfigured to level {log_level_str}.")
-        
         logger.info("Configuration loaded successfully.")
         return settings
     except PydanticValidationError as e:
@@ -70,7 +60,6 @@ def get_genai_client(settings: Settings = Depends(get_application_settings)) -> 
         return client
     except GenAIClientInitError as e:
         # Log the error, but return None as the client is unavailable.
-        # The route handler will be responsible for checking None and raising HTTP 503.
         logger.error(f"Failed to initialize Generative AI client: {e}")
         return None
     except Exception as e:

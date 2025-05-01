@@ -14,13 +14,30 @@ from translator import (
 )
 
 from core.errors import create_error_response
+from core.config import get_settings
 
 # Import the router
 from routers.translate import router as translate_router
 
+# Load settings first to get the log level
+try:
+    settings = get_settings()
+    log_level_str = settings.LOG_LEVEL.upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+except Exception as e:
+    # Fallback if settings loading fails during startup
+    print(f"Warning: Failed to load settings for logging configuration: {e}. Defaulting to INFO level.")
+    log_level = logging.INFO
+    log_level_str = "INFO"
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Use force=True to ensure handlers are updated if basicConfig was called implicitly before
+)
 logger = logging.getLogger(__name__)
+logger.info(f"Logging configured to level {log_level_str}.")
 
 # Create FastAPI app instance
 app = FastAPI(title="Subtranslator")
