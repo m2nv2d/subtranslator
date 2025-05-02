@@ -1,5 +1,5 @@
 import asyncio
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log, RetryError
 from functools import wraps
 
 import json
@@ -8,7 +8,7 @@ import logging
 from google import genai
 from google.genai import types
 
-from typing import Optional
+from typing import Optional, Tuple
 from pydantic import BaseModel, RootModel
 
 from translator.models import SubtitleBlock
@@ -29,38 +29,63 @@ def configurable_retry(f):
         chunk_index = kwargs.get('chunk_index')
         
         if settings is None:
+            # Should not happen if called correctly from translate_all_chunks
+            logging.getLogger(__name__).error("Settings object missing in retry decorator call.")
             raise ValueError("Could not find settings in arguments")
         if chunk_index is None:
+            logging.getLogger(__name__).error("chunk_index missing in retry decorator call.")
             raise ValueError("Could not find chunk_index in arguments")
 
         logger = logging.getLogger(__name__)
-        attempt_count = 0
+        max_attempts = settings.RETRY_MAX_ATTEMPTS
+        
+        current_attempt = 0
+        failed = False
 
         @retry(
-            stop=stop_after_attempt(settings.RETRY_MAX_ATTEMPTS),
-            wait=wait_fixed(1),
+            stop=stop_after_attempt(max_attempts),
+            wait=wait_fixed(1), # Consider making wait configurable settings.RETRY_WAIT_SECONDS
             retry=retry_if_exception_type(Exception),
-            before_sleep=before_sleep_log(logger, logging.INFO, exc_info=False),
-            reraise=True
+            before_sleep=before_sleep_log(logger, logging.WARNING, exc_info=False), # Log before retry
+            reraise=True # Reraise the last exception if all attempts fail
         )
-        async def wrapped_f(*args, **kwargs):
-            nonlocal attempt_count
-            attempt_count += 1
+        async def retry_target(*args, **kwargs):
+            nonlocal current_attempt
+            current_attempt += 1
+            logger.debug(f"Chunk {chunk_index} starting attempt {current_attempt}/{max_attempts}")
             try:
                 result = await f(*args, **kwargs)
-                logger.info(f"Chunk {chunk_index} succeeded on attempt {attempt_count}/{settings.RETRY_MAX_ATTEMPTS}")
-                return result
+                # Success on this attempt
+                logger.info(f"Chunk {chunk_index} succeeded on attempt {current_attempt}/{max_attempts}")
+                return result # Pass through the original result (which is None for _translate_single_chunk)
+            except asyncio.CancelledError:
+                logger.warning(f"Chunk {chunk_index} translation was cancelled on attempt {current_attempt}")
+                raise # Re-raise CancelledError to stop retries immediately
             except Exception as e:
-                if attempt_count >= settings.RETRY_MAX_ATTEMPTS:
-                    logger.error(f"Chunk {chunk_index} failed after all {attempt_count} attempts")
+                if current_attempt >= max_attempts:
+                    logger.error(f"Chunk {chunk_index} failed final attempt {current_attempt}/{max_attempts}")
                 else:
-                    logger.warning(f"Chunk {chunk_index} failed on attempt {attempt_count}/{settings.RETRY_MAX_ATTEMPTS}, retrying...")
-                raise
-            except asyncio.CancelledError: # Handle cancellation explicitly
-                logger.warning(f"Chunk {chunk_index} translation was cancelled on attempt {attempt_count}")
-                raise # Re-raise CancelledError to stop retries
-        
-        return await wrapped_f(*args, **kwargs)
+                    logger.warning(f"Chunk {chunk_index} failed attempt {current_attempt}/{max_attempts}, retrying... Error: {e}")
+                raise # Re-raise exception to trigger tenacity's retry or final failure
+
+        try:
+            await retry_target(*args, **kwargs)
+            # If retry_target succeeds without raising final exception:
+            failed = False
+        except asyncio.CancelledError:
+            logger.warning(f"Chunk {chunk_index} translation cancelled definitively.")
+            # Decide how to report cancelled status? For now, treat as failure with max attempts?
+            # Or re-raise? Re-raising seems more appropriate.
+            raise
+        except Exception as e: # Catches the final exception reraised by tenacity
+            logger.error(f"Chunk {chunk_index} ultimately failed after {current_attempt} attempts. Final Error: {e}")
+            failed = True
+            # We don't need to return the original result of f, just the stats
+
+        # Calculate retries (attempts - 1)
+        retries = max(0, current_attempt - 1)
+        return retries, failed # Return Tuple[int, bool]
+
     return wrapper
 
 @configurable_retry
@@ -73,13 +98,16 @@ async def _translate_single_chunk(
     genai_client: Optional[genai.client.Client],
     settings: Settings,
     semaphore: asyncio.Semaphore,
-) -> None:
+) -> None: # Original function still logically returns None, the decorator wraps this
     """
     Translates a single chunk of subtitle blocks.
-
     Applies retry logic based on the provided configuration.
     Currently implements 'mock' translation and has a placeholder for real translation.
     Acquires a semaphore slot before performing the translation.
+    
+    NOTE: This function's success/failure and retries are managed by the
+          @configurable_retry decorator, which returns Tuple[int, bool].
+          The function itself focuses on the translation logic for one attempt.
     """
     async with semaphore: # Acquire semaphore lock
         if speed_mode == "mock":
@@ -154,9 +182,10 @@ async def translate_all_chunks(
     client: Optional[genai.client.Client],
     settings: Settings,
     semaphore: asyncio.Semaphore,
-) -> None:
+) -> Tuple[int, int]: # Updated return type
     """
     Orchestrates the concurrent translation of multiple subtitle chunks using TaskGroup.
+    Returns aggregated statistics: (total_failed_attempts, total_chunks_with_failures).
     """
     system_prompt = f"""
     You're a video subtitle translator. {context} I'll give you content of srt subtitle blocks, including its index. You should translate it into {target_lang}.
@@ -183,14 +212,13 @@ async def translate_all_chunks(
         ),
     )
 
-    logging.info(f"Starting translation for {len(sub)} chunks using TaskGroup...")
-    failed_chunks = {} # Store failed chunk index and the exception
-
+    logging.info(f"Starting translation for {len(sub)} chunks concurrently...")
+    tasks = []
     try:
         async with asyncio.TaskGroup() as tg:
             # Create tasks for each chunk within the TaskGroup
             for i, chunk in enumerate(sub):
-                tg.create_task(
+                task = tg.create_task(
                     _translate_single_chunk(
                         chunk_index=i,
                         chunk=chunk,
@@ -200,28 +228,52 @@ async def translate_all_chunks(
                         genai_client=client,
                         settings=settings,
                         semaphore=semaphore,
-                    ),
-                    name=f"translate_chunk_{i}" # Optional: name the task for easier debugging
+                    )
                 )
-        # If TaskGroup finishes without exceptions, all tasks succeeded.
-        logging.info("All chunks processed successfully via TaskGroup.")
+                tasks.append(task)
+        
+        # If TaskGroup finishes without exception, all tasks completed (possibly with failures handled by decorator)
+        logging.info(f"All {len(tasks)} translation tasks completed or failed gracefully.")
 
-    except* ChunkTranslationError as eg: # Catch ChunkTranslationError exceptions from tasks
-        for error in eg.exceptions:
-            # Attempt to find the chunk index from the error or task context if possible
-            # This part is tricky as the context isn't directly available in the ExceptionGroup
-            # For now, just log the errors
-            logging.error(f"A chunk translation failed: {error}")
-            # We could potentially parse the error message if it contains the chunk index,
-            # or enhance _translate_single_chunk to include index in its exceptions.
-            # For simplicity now, we'll just collect the errors.
-            # Example: If ChunkTranslationError included chunk_index: failed_chunks[error.chunk_index] = error
-            failed_chunks[error.chunk_index] = error
-        error_details = "\n".join(f"Chunk Error: {err}" for err in eg.exceptions)
-        raise ChunkTranslationError(f"Failed to translate one or more chunks:\n{error_details}") from eg
+    except* Exception as eg: # Catch potential ExceptionGroup
+         # Some task(s) raised an exception not handled by the decorator (e.g., CancelledError)
+         logging.error(f"ExceptionGroup caught during chunk translation: {eg.exceptions}")
+         # We still try to collect stats from completed/failed tasks below
+    
+    # Aggregate results from tasks
+    total_failed_attempts = 0
+    total_chunks_with_failures = 0
 
-    except* Exception as eg: # Catch any other unexpected exceptions from tasks
-        logging.error(f"Unexpected error during chunk translation orchestration: {eg}")
-        error_details = "\n".join(f"Unexpected Error: {err}" for err in eg.exceptions)
-        # Consider if _translate_single_chunk should wrap all its errors in ChunkTranslationError
-        raise ChunkTranslationError(f"Unexpected errors during chunk translation:\n{error_details}") from eg
+    for i, task in enumerate(tasks):
+        if task.done():
+            try:
+                # Accessing task.result() re-raises exception if task failed unexpectedly
+                # Or returns the (retries, failed_flag) tuple if decorator handled it
+                retries, failed_flag = task.result()
+                total_failed_attempts += retries
+                if failed_flag:
+                    total_chunks_with_failures += 1
+                    logging.warning(f"Chunk {i} reported failure (failed_flag=True) with {retries} retries.")
+                else:
+                    logging.debug(f"Chunk {i} reported success with {retries} retries.")
+            except asyncio.CancelledError:
+                 logger.warning(f"Task for chunk {i} was cancelled.")
+                 # Treat cancellation as a failure for stats?
+                 # Let's count it as a failure, attempts unknown (or assume max?)
+                 total_chunks_with_failures += 1
+                 # total_failed_attempts += settings.RETRY_MAX_ATTEMPTS -1 # Optionally add max retries
+            except Exception as e:
+                # Unexpected exception from task.result() (shouldn't happen if decorator handles all)
+                logger.error(f"Unexpected error getting result for chunk {i}: {e}", exc_info=True)
+                total_chunks_with_failures += 1 # Count as failure
+                # total_failed_attempts += settings.RETRY_MAX_ATTEMPTS -1 # Optionally add max retries
+        else:
+             # This case should ideally not happen if TaskGroup completes
+             logger.error(f"Task for chunk {i} was not done after TaskGroup finished.")
+
+    logging.info(f"Aggregated translation stats: Total Failed Attempts={total_failed_attempts}, Chunks With Failures={total_chunks_with_failures}")
+
+    # Modify the subtitle list 'sub' in-place (already done by _translate_single_chunk)
+    
+    # Return the aggregated statistics
+    return total_failed_attempts, total_chunks_with_failures

@@ -5,6 +5,7 @@ This is a simple, personal web application built with FastAPI for translating su
 
 ## Prerequisites
 Review the technical design document provided previously to understand the existing file structure, modules, and core components, especially:
+- `src/core/config.py`
 - `src/core/dependencies.py`
 - `src/routers/translate.py`
 - `src/translator/chunk_translator.py`
@@ -31,7 +32,15 @@ Implement the following asynchronous methods within the `AppStatsStore` class, e
 - `async complete_request(request_id: str, status: str)`: Locates the `FileStats` entry for the given `request_id`, sets its `end_time` to the current time and its `status` to the provided value ("completed" or "failed").
 - `async get_stats()`: Returns a snapshot of the current `TotalStats` and the dictionary of `FileStats`. Acquire the lock briefly to copy the data before returning to ensure consistency.
 
-## Subtask 2: Add Stats Store Dependency
+## Subtask 2: Modify Settings for Hashability
+
+Locate the file `src/core/config.py`.
+
+Review the `Settings` Pydantic model definition.
+Modify the type hint for the `TARGET_LANGUAGES` field from `List[str]` to `Tuple[str, ...]`.
+Locate the validator function that parses the `TARGET_LANGUAGES` string from the environment variable. Ensure that this validator, after parsing the comma-separated string into a collection of language names, returns a `tuple` of strings, not a list.
+
+## Subtask 3: Add Stats Store Dependency
 
 Locate the file `src/core/dependencies.py`.
 
@@ -39,7 +48,7 @@ Add a new asynchronous dependency provider function named `get_stats_store`.
 Decorate this function with `@functools.lru_cache()` to ensure only a single instance of the `AppStatsStore` is created and reused across the application lifetime.
 Inside the function, initialize and return an instance of the `AppStatsStore` class defined in `src/core/stats.py`.
 
-## Subtask 3: Integrate Stats Updates in Router
+## Subtask 4: Integrate Stats Updates in Router
 
 Locate the file `src/routers/translate.py`.
 
@@ -53,7 +62,7 @@ Modify the `POST /translate` handler's logic to perform the following statistics
 - Implement a `try...except...finally` block around the core translation processing logic (parsing, context detection, translation, reassembly).
 - In the `finally` block, call `stats_store.complete_request` with the `request_id`. Pass `"completed"` as the status if the `try` block finished without unhandled exceptions, and `"failed"` if an exception was caught.
 
-## Subtask 4: Modify Chunk Translator Return Value
+## Subtask 5: Modify Chunk Translator Return Value
 
 Locate the file `src/translator/chunk_translator.py`.
 
@@ -63,7 +72,7 @@ Modify the `async translate_all_chunks` function. It currently uses `asyncio.Tas
 Aggregate the collected statistics from all chunk tasks: sum the retry counts from all chunks to get the total failed attempts for the entire file translation, and count how many chunks returned `True` for the "failed" indicator to get the number of chunks with failures.
 Modify the `async translate_all_chunks` function's return value to return these two aggregated numbers (total failed attempts for the file, number of chunks with failures) back to its caller (the router). The function will now return `Tuple[int, int]`.
 
-## Subtask 5: Add Stats Endpoint
+## Subtask 6: Add Stats Endpoint
 
 Locate the file `src/routers/translate.py`. Alternatively, you could create a new router file like `src/routers/stats.py` and include it in `src/main.py`, but for a simple personal app, adding it to `translate.py` might be acceptable. Add the new route to `translate.py` for simplicity.
 
@@ -71,10 +80,3 @@ Add a new FastAPI `GET` endpoint at the path `/stats`.
 Inject the `AppStatsStore` dependency into this function's signature.
 Inside the handler function for the `/stats` endpoint, call the `stats_store.get_stats()` method.
 Return the result obtained from `stats_store.get_stats()`. FastAPI will automatically serialize the dictionary/Pydantic model returned into a JSON response.
-
-## Subtask 6: Testing and Verification
-
-**Automated Tests:**
-- Add unit tests in `tests/automated/unit/core/test_stats.py` for the `AppStatsStore` class to verify its methods correctly update and retrieve statistics while using the lock.
-- Add integration tests in `tests/automated/integration/` to test the `/stats` endpoint, confirming it returns data in the expected format.
-- Enhance integration tests for the `/translate` endpoint to verify that submitting a file correctly updates the statistics visible via the `/stats` endpoint, checking counts for blocks, chunks, retries (by potentially mocking the AI response to force retries or failures), and overall status.

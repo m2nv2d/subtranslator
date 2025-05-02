@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from pathlib import Path
-from typing import List, Optional, Any, Annotated
+from typing import Annotated
 
 from pydantic import model_validator, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     NORMAL_MODEL: str = Field(default="gemini-2.5-pro-preview-03-25", description="Model name for normal translations")
     
     # Optional settings with defaults
-    TARGET_LANGUAGES: Annotated[List[str], NoDecode] = Field(
-        default=["Vietnamese", "French"],
+    TARGET_LANGUAGES: Annotated[tuple[str, ...], NoDecode] = Field(
+        default=("Vietnamese", "French"),
         description="List of target languages available for translation"
     )
     CHUNK_MAX_BLOCKS: int = Field(
@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     
     # Configure .env file support
     model_config = SettingsConfigDict(
+        frozen=True,
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
@@ -65,12 +66,12 @@ class Settings(BaseSettings):
         
         if target_langs_env:
             # Set value based on the environment variable
-            langs = [lang.strip() for lang in target_langs_env.split(',') if lang.strip()]
-            values[target_langs_key] = langs if langs else ["Vietnamese", "French"]
+            langs = tuple(lang.strip() for lang in target_langs_env.split(',') if lang.strip())
+            values[target_langs_key] = langs if langs else ("Vietnamese", "French")
         elif target_langs_key in values and isinstance(values[target_langs_key], str):
             # Set value based on the .env file string
-            langs = [lang.strip() for lang in values[target_langs_key].split(',') if lang.strip()]
-            values[target_langs_key] = langs if langs else ["Vietnamese", "French"]
+            langs = tuple(lang.strip() for lang in values[target_langs_key].split(',') if lang.strip())
+            values[target_langs_key] = langs if langs else ("Vietnamese", "French")
         
         return values
     
@@ -79,7 +80,7 @@ class Settings(BaseSettings):
     def validate_languages(cls, value):
         """Ensure TARGET_LANGUAGES is not empty"""
         if not value:
-            return ["Vietnamese", "French"]
+            return ("Vietnamese", "French")
         return value
     
     @field_validator("LOG_LEVEL")

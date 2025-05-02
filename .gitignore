@@ -7,6 +7,7 @@ dist/
 wheels/
 *.egg-info
 .venv
+uv.lock
 
 # JS-TS generated files
 node_modules/

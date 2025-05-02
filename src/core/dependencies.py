@@ -4,6 +4,7 @@ import sys
 import asyncio
 
 from core.config import get_settings, Settings
+from core.stats import AppStatsStore
 from fastapi import Depends, HTTPException
 from google import genai
 from pydantic import ValidationError as PydanticValidationError
@@ -80,3 +81,17 @@ def get_translation_semaphore(settings: Settings = Depends(get_application_setti
         logger.info(f"Initializing global translation semaphore with limit: {limit}")
         _translation_semaphore = asyncio.Semaphore(limit)
     return _translation_semaphore 
+
+@functools.lru_cache()
+def get_stats_store() -> AppStatsStore:
+    """Dependency provider for the application statistics store.
+
+    Initializes the store on first call and returns the same instance
+    on subsequent calls.
+    """
+    logger.info("Initializing Application Statistics Store...")
+    # The store itself handles async operations internally with its lock
+    # The provider just needs to return the singleton instance.
+    store = AppStatsStore()
+    logger.info("Application Statistics Store initialized.")
+    return store

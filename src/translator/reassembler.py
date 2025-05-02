@@ -1,9 +1,8 @@
-from typing import List
 from srt import Subtitle, compose
 
 from translator.models import SubtitleBlock
 
-def reassemble_srt(sub_chunks: List[List[SubtitleBlock]]) -> bytes:
+def reassemble_srt(sub_chunks: list[list[SubtitleBlock]]) -> bytes:
     """Reassembles translated subtitle chunks into a complete SRT file content.
 
     Args:

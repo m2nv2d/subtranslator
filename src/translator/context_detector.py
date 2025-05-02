@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import List, Optional
+from typing import Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from functools import wraps
 
@@ -33,7 +33,7 @@ def configurable_retry(f):
 
 @configurable_retry
 async def detect_context(
-    sub: List[List[SubtitleBlock]],
+    sub: list[list[SubtitleBlock]],
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
     settings: Settings,

@@ -2,7 +2,6 @@ import math
 import srt
 import aiofiles
 import aiofiles.os
-from typing import List
 
 from translator.exceptions import ParsingError, ValidationError
 from translator.models import SubtitleBlock
@@ -10,7 +9,7 @@ from translator.models import SubtitleBlock
 MAX_FILE_SIZE_MB = 2
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-async def parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[SubtitleBlock]]:
+async def parse_srt(file_path: str, chunk_max_blocks: int) -> list[list[SubtitleBlock]]:
     """Parses an SRT file from a given path, validates it, and chunks the content.
 
     Args:
@@ -55,7 +54,7 @@ async def parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[Subtitle
         return [] # Return empty list if the SRT file has no subtitles
 
     # Data Structure Mapping
-    subtitle_blocks: List[SubtitleBlock] = []
+    subtitle_blocks: list[SubtitleBlock] = []
     for sub in parsed_subs:
         block = SubtitleBlock(
             index=sub.index,
