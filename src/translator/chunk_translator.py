@@ -2,16 +2,24 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log
 from functools import wraps
 
-from typing import List, Optional
 import json
 import logging
 
 from google import genai
 from google.genai import types
 
+from typing import Optional
+from pydantic import BaseModel, RootModel
+
 from translator.models import SubtitleBlock
 from translator.exceptions import ChunkTranslationError
 from core.config import Settings
+
+class TranslatedBlock(BaseModel):
+    index: int
+    translated_lines: list[str]
+
+TranslatedChunk = RootModel[list[TranslatedBlock]]
 
 def configurable_retry(f):
     @wraps(f)
@@ -58,8 +66,9 @@ def configurable_retry(f):
 @configurable_retry
 async def _translate_single_chunk(
     chunk_index: int,
-    chunk: List[SubtitleBlock],
+    chunk: list[SubtitleBlock],
     system_prompt: str,
+    response_schema: genai.types.Schema,
     speed_mode: str,
     genai_client: Optional[genai.client.Client],
     settings: Settings,
@@ -88,26 +97,44 @@ async def _translate_single_chunk(
                 
             response = await genai_client.aio.models.generate_content(
                 model=model_to_use,
-                contents=[system_prompt, request_prompt],
+                contents=[
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=request_prompt),
+                        ],
+                    )
+                ],
                 config=types.GenerateContentConfig(
                     response_mime_type='application/json',
+                    response_schema=response_schema,
+                    system_instruction=[
+                        types.Part.from_text(text=system_prompt),
+                    ],
                     thinking_config=types.ThinkingConfig(thinking_budget=0)
                 )
             )
 
             # Parse response
-            try:
-                translated_json = json.loads(response.text)
-                for block_data in translated_json: # Renamed block to block_data
-                    block_index = block_data['index'] # Use block_data
-                    translated_lines = ""
-                    i = 1
-                    while f'translated_line_{i}' in block_data: # Use block_data
-                        if translated_lines:
-                            translated_lines += "\n"
-                        translated_lines += block_data[f'translated_line_{i}'] # Use block_data
-                        i += 1
-                    chunk[block_index].translated_content = translated_lines
+            try:                
+                # Validate JSON structure against TranslatedChunk model
+                try:
+                    validated_chunk = TranslatedChunk.model_validate_json(response.text)
+                except Exception as e:
+                    raise ChunkTranslationError(f"Response does not match expected schema: {str(e)}")
+                
+                # Process validated data
+                for block_data in validated_chunk.model_dump():
+                    block_index = block_data['index']
+                    # Join all translated lines with newlines
+                    translated_content = "\n".join(block_data['translated_lines'])
+                    
+                    # Ensure the block index is valid
+                    if 0 <= block_index < len(chunk):
+                        chunk[block_index].translated_content = translated_content
+                    else:
+                        raise ChunkTranslationError(f"Invalid block index {block_index} received in translation response for chunk {chunk_index}.")
+                
                 logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response.text}\n-----END-----\n")            
 
             except json.JSONDecodeError:
@@ -121,7 +148,7 @@ async def _translate_single_chunk(
 
 async def translate_all_chunks(
     context: str,
-    sub: List[List[SubtitleBlock]],
+    sub: list[list[SubtitleBlock]],
     target_lang: str,
     speed_mode: str,
     client: Optional[genai.client.Client],
@@ -134,12 +161,27 @@ async def translate_all_chunks(
     system_prompt = f"""
     You're a video subtitle translator. {context} I'll give you content of srt subtitle blocks, including its index. You should translate it into {target_lang}.
 
-    Make sure to return in structured JSON array [...]. Each item inside the array will be a JSON object {{...}} following the structure:
-    "index": The original index of the subtitle block.
-    "translated_line_1": The first line of the translation.
-    "translated_line_2": The second line (if it exists).
-    ... and so on for subsequent lines within the same block.
+    Make sure to return in structured JSON array [...]. Ignore timestamps if there are. The output JSON contains a list, where each item in the list is an object that contains two required properties: "index" and "translated_lines". The "index" property is the integer index as provided in the input. The "translated_lines" property is itself a list made up of text strings, one for each line in the translated subtitle block. Break up the lines just like the original blocks for readability. Don't merge two lines of the same blockinto one.
     """
+
+    response_schema = genai.types.Schema(
+        type = genai.types.Type.ARRAY,
+        items = genai.types.Schema(
+            type = genai.types.Type.OBJECT,
+            required = ["index", "translated_lines"],
+            properties = {
+                "index": genai.types.Schema(
+                    type = genai.types.Type.INTEGER,
+                ),
+                "translated_lines": genai.types.Schema(
+                    type = genai.types.Type.ARRAY,
+                    items = genai.types.Schema(
+                        type = genai.types.Type.STRING,
+                    ),
+                ),
+            },
+        ),
+    )
 
     logging.info(f"Starting translation for {len(sub)} chunks using TaskGroup...")
     failed_chunks = {} # Store failed chunk index and the exception
@@ -153,6 +195,7 @@ async def translate_all_chunks(
                         chunk_index=i,
                         chunk=chunk,
                         system_prompt=system_prompt,
+                        response_schema=response_schema,
                         speed_mode=speed_mode,
                         genai_client=client,
                         settings=settings,

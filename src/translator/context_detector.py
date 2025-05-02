@@ -66,13 +66,24 @@ async def detect_context(
         request_prompt = f"{content}"
 
         # Call GenAI using async API
-        model = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+        model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
         response = await genai_client.aio.models.generate_content(
-                model=model,
-                contents=[system_prompt, request_prompt],
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=0)
+            model=model_to_use,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=request_prompt),
+                    ],
                 )
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type='text/plain',
+                system_instruction=[
+                    types.Part.from_text(text=system_prompt),
+                ],
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            )
         )
         return response.text
 
