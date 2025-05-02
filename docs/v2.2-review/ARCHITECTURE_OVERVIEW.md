@@ -53,6 +53,7 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
 │   • `src/translator/context_detector.py`:
 │     • Takes first chunk, constructs prompt.
 │     • Uses **injected `client`** (selects model based on `speed_mode`).
+│     • Uses structured requests with `types.Content` and `types.Part`.
 │     • Uses `tenacity` for retries.
 │     • Returns context string (e.g., "cooking tutorial").
 │   • `src/translator/chunk_translator.py`:
@@ -61,8 +62,10 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
 │       • Uses `@configurable_retry` decorator for retry logic
 │       • Acquires semaphore to limit concurrent operations
 │       • Constructs prompt (with context, target_lang).
-│       • Uses **injected `client`** async method (selects model based on `speed_mode`, requests JSON).
-│       • Parses JSON response, updates `SubtitleBlock.translated_content` in-place.
+│       • Defines structured schema using `genai.types.Schema` for JSON output
+│       • Uses **injected `client`** async method (selects model based on `speed_mode`, requests structured JSON).
+│       • Validates JSON response using Pydantic models (`TranslatedChunk` and `TranslatedBlock`)
+│       • Updates `SubtitleBlock.translated_content` in-place based on validated data.
 │       • Handles API/parsing errors.
 │   • `src/translator/reassembler.py`:
 │     • Uses `srt.compose` to merge translated/original blocks into SRT format string.
@@ -80,6 +83,7 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
     *   LLM Interaction: `google-genai` SDK
     *   Subtitle Handling: `srt`
     *   Configuration: Pydantic Settings
+    *   Validation: Pydantic models for LLM response validation
     *   Concurrency/Retries: `asyncio`, `tenacity`, `aiofiles`
 *   **Databases/Storage:** None (temporary file storage for uploads during request processing only).
 *   **Frontend:** Vanilla JavaScript, HTML5, CSS3.
@@ -99,6 +103,7 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
 *   **Environment-Based Configuration:** Settings class reads configuration from `.env` or environment variables, with validation at startup.
 *   **Custom Exceptions & Error Handling:** Custom exception types with FastAPI's exception handlers to return structured error responses with appropriate HTTP status codes. Uses Python 3.11's ExceptionGroups for structured concurrent error handling.
 *   **Client-Side Download Trigger:** The translated SRT is sent as a stream with appropriate headers to trigger download in the browser.
+*   **Structured Output with JSON Schema:** Uses Gemini's schema validation capabilities combined with Pydantic models to enforce structured JSON responses, ensuring consistent and valid output formats.
 
 ## 6. Major System Components
 *   **`src/main.py`:** The FastAPI application entry point. Configures the app, mounts static files, registers exception handlers, and includes routers.
@@ -107,11 +112,11 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
 *   **`src/core/errors.py`:** Contains error response models and utilities.
 *   **`src/routers/translate.py`:** Contains the translation route handlers, orchestrating the workflow by calling translator modules.
 *   **`src/translator/exceptions.py`:** Defines custom application-specific exception classes.
-*   **`src/translator/models.py`:** Contains data structures, notably `SubtitleBlock` representing a single subtitle entry.
+*   **`src/translator/models.py`:** Contains data structures, notably `SubtitleBlock` representing a single subtitle entry, and Pydantic models `TranslatedBlock` and `TranslatedChunk` for validating Gemini API responses.
 *   **`src/translator/parser.py`:** Validates uploaded SRT file, parses its content using the `srt` library, and divides it into chunks of `SubtitleBlock` objects.
 *   **`src/translator/gemini_helper.py`:** Responsible for initializing the Gemini client with the API key from Settings.
-*   **`src/translator/context_detector.py`:** Determines a high-level context for the subtitles using the Gemini API. Includes retry logic.
-*   **`src/translator/chunk_translator.py`:** Orchestrates the parallel translation of subtitle chunks using TaskGroup. Each task calls the Gemini API, handles retries using the configurable_retry decorator, parses the response, and updates the `SubtitleBlock` objects.
+*   **`src/translator/context_detector.py`:** Determines a high-level context for the subtitles using the Gemini API. Includes retry logic and uses structured requests via `types.Content` and `types.Part`.
+*   **`src/translator/chunk_translator.py`:** Orchestrates the parallel translation of subtitle chunks using TaskGroup. Each task calls the Gemini API with a structured JSON schema, handles retries using the configurable_retry decorator, validates the response with Pydantic models, and updates the `SubtitleBlock` objects.
 *   **`src/translator/reassembler.py`:** Takes the list of translated `SubtitleBlock` chunks and composes them back into a single SRT formatted string.
 *   **`src/templates/index.html`:** The Jinja2 template for the main user interface.
 *   **`src/static/js/app.js`:** Client-side JavaScript handling form submission, validation, UI updates, and file download.
@@ -147,6 +152,7 @@ FastAPI App (`src/main.py` with `src/routers/translate.py`)
 *   **Reliability:**
     *   Relies on the availability and reliability of the Google Generative AI API.
     *   `tenacity` is used with a custom decorator to automatically retry failed API calls, improving resilience against transient issues.
+    *   Structured JSON schemas coupled with Pydantic validation ensure consistent and well-formed responses from the Gemini API.
     *   The application will properly handle cases where the Gemini client cannot be initialized, returning appropriate error responses.
     *   Comprehensive exception handling with ExceptionGroups prevents crashes on expected failures and provides informative responses.
     *   Try/finally blocks ensure cleanup operations complete regardless of success or failure.

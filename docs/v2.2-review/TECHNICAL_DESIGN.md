@@ -185,6 +185,13 @@ Classes
   - `content: str`
   - `translated_content: Optional[str] = None`
 
+- `TranslatedBlock(BaseModel)`
+  - `index: int` - The subtitle index
+  - `translated_text: str` - The translated text content
+
+- `TranslatedChunk(BaseModel)`
+  - `translations: List[TranslatedBlock]` - List of translated blocks
+
 ### src/translator/parser.py
 Validates SRT files and parses them into subtitle blocks.
 
@@ -223,6 +230,7 @@ Functions
   `) -> str`
   - Returns mock context if `speed_mode="mock"`
   - Uses appropriate model from settings based on `speed_mode`
+  - Constructs request with `types.Content` and `types.Part` for proper prompt formatting
   - Makes async API requests to Gemini if necessary
   - Implements retry logic with tenacity
   - Returns context string describing the content
@@ -247,8 +255,11 @@ Functions
   `) -> None`
   - Acquires semaphore before translation to limit concurrent operations
   - Uses mock translation for `speed_mode="mock"`
-  - Makes async API calls for "fast"/"normal" modes
-  - Parses JSON responses and updates `translated_content` in chunk objects
+  - Creates structured schema using `genai.types.Schema` to enforce JSON structure
+  - Constructs request with `types.Content` and `types.Part` for proper prompt formatting
+  - Makes async API calls for "fast"/"normal" modes with response_schema parameter
+  - Uses Pydantic validation (TranslatedChunk model) to parse and validate JSON responses
+  - Updates `translated_content` in chunk objects based on validated response
   - Applies retry logic via the `@configurable_retry` decorator
   - Raises appropriate exceptions for API and parsing failures
 
