@@ -9,6 +9,7 @@ This document describes the concrete code structure, modules, classes, functions
   - src/core/config.py
   - src/core/dependencies.py 
   - src/core/errors.py
+  - src/core/stats.py
   - src/translator/exceptions.py
   - src/translator/models.py
   - src/translator/parser.py
@@ -46,6 +47,7 @@ project_root/
 │  │  │  config.py          # Configuration using Pydantic Settings
 │  │  │  dependencies.py    # FastAPI dependency providers
 │  │  │  errors.py          # Error response models and utilities
+│  │  │  stats.py           # In-memory application statistics store
 │  │
 │  ├─ routers/              # FastAPI endpoint routers
 │  │  │  __init__.py        # Makes 'routers' a package
@@ -74,6 +76,7 @@ project_root/
    ├─ automated/            # Automated tests (unit, integration, etc.)
    │    │  unit/            # Unit tests for individual components
    │    │    │ __init__.py
+   │    │    └─ core/       # Tests for core components (config, stats)
    │    │    └─ translator/ # Unit tests mirroring src/translator structure
    │    │
    │    └─ integration/     # Integration tests for component interactions
@@ -116,7 +119,7 @@ Classes
   - Uses `pydantic_settings.BaseSettings` for environment variable loading
   - Required string variables: `AI_PROVIDER`, `AI_API_KEY`, `FAST_MODEL`, and `NORMAL_MODEL`. 
   - Optional vars with defaults and extensive validation:
-    - `TARGET_LANGUAGES`: List of full language names parsed from comma-separated string (e.g., `"Vietnamese,French"`), defaults to `["Vietnamese", "French"]` if invalid or missing.
+    - `TARGET_LANGUAGES`: Tuple of full language names parsed from comma-separated string (e.g., `"Vietnamese,French"`), defaults to `("Vietnamese", "French")` if invalid or missing. Type changed from `list` to `tuple` for hashability.
     - `CHUNK_MAX_BLOCKS`: Positive integer (default `100`). Validated with Pydantic Field constraints.
     - `RETRY_MAX_ATTEMPTS`: Non-negative integer (default `4`). Validated with Pydantic Field constraints.
     - `LOG_LEVEL`: Valid uppercase log level string (default `"INFO"`, must be one of `["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]`). Validated with custom validator.
@@ -149,6 +152,11 @@ Functions
   - Limits concurrent translation tasks based on `settings.MAX_CONCURRENT_TRANSLATIONS`
   - Uses LRU cache to ensure a single semaphore instance is shared across the application
 
+- `@functools.lru_cache() get_stats_store() -> AppStatsStore`
+  - Dependency provider for the application statistics store.
+  - Cached to ensure a single `AppStatsStore` instance is shared globally.
+  - Initializes the store on the first call.
+
 ### src/core/errors.py
 Purpose: Standard error response formats and utilities.
 
@@ -161,6 +169,27 @@ Functions
 - `create_error_response(message: str) -> dict`
   - Creates standardized error response dictionaries
   - Returns `{"error": message}`
+
+### src/core/stats.py
+Purpose: Define and manage in-memory application statistics.
+
+Classes
+- `FileStats(BaseModel)`
+  - Pydantic model for tracking statistics of a single file translation request.
+  - Fields: `request_id`, `filename`, `file_size`, `status`, `start_time`, `end_time`, `duration_ms`, `total_chunks`, `total_blocks`, `failed_chunks`.
+
+- `TotalStats(BaseModel)`
+  - Pydantic model for tracking aggregated application statistics.
+  - Fields: `total_files_processed`, `total_translation_failures`, `total_successful_translations`, `last_updated`.
+
+- `AppStatsStore`
+  - Manages the in-memory storage of statistics using dictionaries.
+  - Provides thread-safe methods (using locks) to:
+    - `create_file_entry`: Initialize stats for a new file request.
+    - `update_parsing_stats`: Update stats after parsing.
+    - `update_translation_stats`: Update stats after translation attempts.
+    - `complete_request`: Mark a request as completed or failed, updating total stats.
+    - `get_stats`: Retrieve current `TotalStats` and a dictionary of `FileStats`.
 
 ### src/translator/exceptions.py
 Custom exception hierarchy for clear error handling within the application.
@@ -190,7 +219,7 @@ Classes
   - `translated_text: str` - The translated text content
 
 - `TranslatedChunk(BaseModel)`
-  - `translations: List[TranslatedBlock]` - List of translated blocks
+  - `translations: list[TranslatedBlock]` - List of translated blocks (Type hint updated to use `list`)
 
 ### src/translator/parser.py
 Validates SRT files and parses them into subtitle blocks.
@@ -203,7 +232,7 @@ Imports
 - `translator.models`
 
 Functions
-- `async parse_srt(file_path: str, chunk_max_blocks: int) -> List[List[models.SubtitleBlock]]`
+- `async parse_srt(file_path: str, chunk_max_blocks: int) -> list[list[models.SubtitleBlock]]`
   - Validates file extension and size
   - Reads and parses SRT content asynchronously 
   - Maps subtitle blocks to `models.SubtitleBlock` objects
@@ -243,6 +272,7 @@ Functions
   - Decorator that provides customizable retry behavior for translation functions
   - Uses tenacity for retry logic
   - Configures retry attempts based on settings
+  - Returns a tuple `(retries, failed)` indicating the number of retries and if the final attempt failed.
 
 - `async _translate_single_chunk(`
     `chunk_index: int,`
@@ -260,7 +290,7 @@ Functions
   - Makes async API calls for "fast"/"normal" modes with response_schema parameter
   - Uses Pydantic validation (TranslatedChunk model) to parse and validate JSON responses
   - Updates `translated_content` in chunk objects based on validated response
-  - Applies retry logic via the `@configurable_retry` decorator
+  - Applies retry logic via the `@configurable_retry` decorator (returns retry count and failure status).
   - Raises appropriate exceptions for API and parsing failures
 
 - `async translate_all_chunks(`
@@ -271,17 +301,17 @@ Functions
     `client: Optional[genai.client.Client],`
     `settings: Settings,`
     `semaphore: asyncio.Semaphore,`
-  `) -> None`
+  `) -> tuple[int, int]`
   - Uses `asyncio.TaskGroup` for concurrent translation
-  - Creates tasks for each chunk to translate them in parallel
-  - Handles exceptions using structured error handling with ExceptionGroups
+  - Creates tasks for each chunk using `_translate_single_chunk`
   - Collects and reports on failed chunks
+  - Returns a tuple containing the total number of chunks processed and the number of chunks that failed translation.
 
 ### src/translator/reassembler.py
 Merges translated blocks back into a single SRT formatted string or bytes.
 
 Function
-- `reassemble_srt(sub: List[List[models.SubtitleBlock]]) -> str`
+- `reassemble_srt(sub: list[list[models.SubtitleBlock]]) -> str`
   - Uses the `srt` library to format blocks
   - Uses `translated_content` if available, otherwise original `content`
   - Returns SRT formatted string
@@ -335,16 +365,25 @@ Routes
   - Accepts SRT file upload, target language, and speed mode
   - Validates inputs (file type, language)
   - Checks if AI client is available when needed based on speed mode
+  - Injects `AppStatsStore` dependency for statistics tracking.
   - Orchestrates the translation workflow:
-    1. Save uploaded file to temporary location using aiofiles
-    2. Parse SRT into chunks
-    3. Detect context
-    4. Translate chunks asynchronously with semaphore-based concurrency limits
-    5. Reassemble SRT
-    6. Return translated SRT as downloadable file
+    1. Create an entry in the `AppStatsStore`.
+    2. Save uploaded file to temporary location using aiofiles.
+    3. Parse SRT into chunks, update stats store with parsing results.
+    4. Detect context.
+    5. Translate chunks asynchronously with semaphore-based concurrency limits, update stats store with translation results (total chunks, failed chunks).
+    6. Reassemble SRT.
+    7. Mark request as completed in stats store.
+    8. Return translated SRT as downloadable file.
   - Uses try/finally blocks for cleanup operations
+  - Updates stats store to mark request as failed if exceptions occur during processing.
   - Handles exceptions with appropriate HTTP error responses
   - Ensures temporary files are cleaned up regardless of success or failure
+
+- `GET /stats`
+  - Accepts `AppStatsStore` dependency.
+  - Calls `stats_store.get_stats()` to retrieve current statistics.
+  - Returns a JSON response containing `TotalStats` and a dictionary of `FileStats`.
 
 ### src/templates/index.html
 Renders the primary user interface using Jinja2 templates.
@@ -414,16 +453,19 @@ Provides visual styling for the web interface.
 
 ## Testing Considerations
 - **Test Structure:**
-  - `tests/automated/unit/` for component unit tests
-  - `tests/automated/integration/` for integration tests
+  - `tests/automated/unit/` for component unit tests (e.g., `core/test_stats.py`, `translator/test_parser.py`)
+  - `tests/automated/integration/` for integration tests (e.g., testing the full `/translate` and `/stats` endpoints)
   - `tests/manual/` for manual testing scripts
   - `tests/samples/` for sample SRT files
 
 - **Testing Strategies:**
-  - Mock FastAPI dependencies for unit testing
-  - Test configuration loading with various environment values
-  - Mock Gemini client and responses for predictable test results
-  - Test client availability handling in route handlers
-  - Test all exception paths and error responses
-  - Test file upload and download workflows
-  - Test concurrency control with semaphore
+  - Mock FastAPI dependencies for unit testing (`Settings`, `genai.Client`, `AppStatsStore`).
+  - Test configuration loading with various environment values.
+  - Mock Gemini client and responses for predictable test results.
+  - Test client availability handling in route handlers.
+  - Test all exception paths and error responses.
+  - Test file upload and download workflows.
+  - Test concurrency control with semaphore.
+  - Test statistics tracking and the `/stats` endpoint for accuracy and correct updates.
+  - Use `pytest-asyncio` for testing asynchronous code paths effectively.
+  - Note: Some previous test files (e.g., `test_error_models.py`, `test_pydantic_settings.py`) might have been removed or refactored during development; ensure necessary coverage exists in current tests.
