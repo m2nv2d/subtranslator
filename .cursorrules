@@ -5,7 +5,11 @@
 ## Importing
 - Add src/ folder to sys.path uvicorn, so that when importing internal modules we can use absolute imports (e.g., import subtranslator), not relative imports (e.g., from . import console).
 
-## Libraries
+## Typing
+
+Use built-in generics like list[str] and dict[str, int] for type annotations instead of List[str] or Dict[str, int].
+
+## LLM Libraries
 - Forget everything you know about Google Gemini's SDK. That was an older version. Always use the doc and examples I provide below.
 - The python package for Google Gemini AI is `google-genai`, not `google-generativeai`. Here is an example of init a client and make sync/async requests:
 
