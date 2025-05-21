@@ -4,15 +4,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const targetLangSelect = document.getElementById('target-lang');
     const speedModeSelect = document.getElementById('speed-mode');
     const submitButton = document.getElementById('submit-button');
-    // No separate status message container needed anymore
+    const statusMessage = document.getElementById('status-message');
     const progressContainer = document.getElementById('progress-container');
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
 
     // Verify all required elements exist
-    if (!translateForm || !fileInput || !targetLangSelect || !speedModeSelect || !submitButton || !progressContainer || !progressBar || !progressText) {
+    if (!translateForm || !fileInput || !targetLangSelect || !speedModeSelect || !submitButton || !statusMessage) {
         console.error('Error: One or more required form elements not found.');
-        alert('Error: Page setup failed. Please refresh.');
+        showStatus('Error: Page setup failed. Please refresh.', 'error');
         return;
     }
 
@@ -70,28 +70,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper function to show status messages in progress container
+    // Helper function to show status messages
     function showStatus(message, type) {
-        progressContainer.classList.remove('hidden');
+        statusMessage.textContent = message;
+        statusMessage.className = 'border rounded-lg p-4 text-center';
         
-        // Update progress text with the status message
-        progressText.textContent = message;
-        
-        // Set progress bar color based on status type
         switch (type) {
             case 'processing':
-                progressBar.className = 'h-full bg-blue-500 rounded-full';
-                progressBar.style.width = '25%';
+                statusMessage.classList.add('bg-blue-50', 'text-blue-700', 'border-blue-200');
                 break;
             case 'success':
-                progressBar.className = 'h-full bg-green-500 rounded-full';
-                progressBar.style.width = '100%';
+                statusMessage.classList.add('bg-green-50', 'text-green-700', 'border-green-200');
                 break;
             case 'error':
-                progressBar.className = 'h-full bg-red-500 rounded-full';
-                progressBar.style.width = '100%';
+                statusMessage.classList.add('bg-red-50', 'text-red-700', 'border-red-200');
                 break;
         }
+        
+        statusMessage.classList.remove('hidden');
     }
 
     // Form submission handler
@@ -123,6 +119,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         submitButton.disabled = true;
         showStatus('Uploading and translating... Please wait.', 'processing');
+        
+        // Show progress bar
+        if (progressContainer) {
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '5%'; // Start with a small indicator
+            progressText.textContent = 'Processing...'
+        }
 
         try {
             // --- Asynchronous Fetch Request ---
@@ -151,7 +154,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.URL.revokeObjectURL(url); // Clean up the object URL
                 a.remove();
 
-                // Translation is complete - status will be updated via showStatus
+                // Update progress to 100%
+                if (progressBar && progressText) {
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '100% Complete';
+                }
 
                 showStatus('Translation complete!', 'success');
             } else {
