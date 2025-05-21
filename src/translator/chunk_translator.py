@@ -122,7 +122,20 @@ async def _translate_single_chunk(
                 request_prompt += f"\n{i}\n{block.content}\n"
 
             model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
-                
+            
+            # Create base config parameters
+            config_params = {
+                'response_mime_type': 'application/json',
+                'response_schema': response_schema,
+                'system_instruction': [
+                    types.Part.from_text(text=system_prompt),
+                ]
+            }
+            
+            # Add thinking_config only for fast mode
+            if speed_mode == "fast":
+                config_params['thinking_config'] = types.ThinkingConfig(thinking_budget=0)
+            
             response = await genai_client.aio.models.generate_content(
                 model=model_to_use,
                 contents=[
@@ -133,14 +146,7 @@ async def _translate_single_chunk(
                         ],
                     )
                 ],
-                config=types.GenerateContentConfig(
-                    response_mime_type='application/json',
-                    response_schema=response_schema,
-                    system_instruction=[
-                        types.Part.from_text(text=system_prompt),
-                    ],
-                    thinking_config=types.ThinkingConfig(thinking_budget=0)
-                )
+                config=types.GenerateContentConfig(**config_params)
             )
 
             # Parse response
