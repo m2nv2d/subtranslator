@@ -28,7 +28,20 @@ fi
 # Start the FastAPI server in the background
 echo "Starting FastAPI server..."
 if [ -n "$LOG_CONFIG" ]; then
-    uv run uvicorn --app-dir ./src --reload --reload-dir ./src --host 0.0.0.0 --port $PORT --log-config $LOG_CONFIG main:app
+    uv run uvicorn \
+        --app-dir ./src \
+        --reload \
+        --reload-dir ./src \
+        --host 0.0.0.0 \
+        --port "$PORT" \
+        --log-config "$LOG_CONFIG" \
+        main:app
 else
-    uv run uvicorn --app-dir ./src  --reload --reload-dir ./src --host 0.0.0.0 --port $PORT main:app
+    uv run uvicorn \
+        --app-dir ./src \
+        --reload \
+        --reload-dir ./src \
+        --host 0.0.0.0 \
+        --port "$PORT" \
+        main:app
 fi
