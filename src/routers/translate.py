@@ -28,8 +28,9 @@ from translator import (
 )
 
 from core.config import Settings
-from core.dependencies import get_application_settings, get_genai_client, get_translation_semaphore, get_stats_store
+from core.dependencies import get_application_settings, get_genai_client, get_translation_semaphore, get_stats_store, get_application_rate_limiter
 from core.stats import AppStatsStore, TotalStats, FileStats
+from core.rate_limiter import check_session_file_limit
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,12 @@ async def get_statistics(
 
 @router.post("/translate")
 async def translate_srt(
+    request: Request,
     settings: Annotated[Settings, Depends(get_application_settings)],
     genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
     semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
     stats_store: Annotated[AppStatsStore, Depends(get_stats_store)],
+    _: None = Depends(check_session_file_limit),
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")

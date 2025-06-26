@@ -1,9 +1,11 @@
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from tenacity import RetryError
 
 from translator import (
@@ -41,6 +43,23 @@ logger.info(f"Logging configured to level {log_level_str}.")
 
 # Create FastAPI app instance
 app = FastAPI(title="Subtranslator")
+
+# Middleware to ensure sessions have a session_id
+@app.middleware("http")
+async def ensure_session_id(request: Request, call_next):
+    if "session_id" not in request.session:
+        request.session["session_id"] = str(uuid.uuid4())
+        logger.debug(f"Assigned new session ID: {request.session['session_id']}")
+    
+    response = await call_next(request)
+    return response
+
+# Add session middleware (added after custom middleware so it executes first)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET_KEY,
+    session_cookie="session_id"
+)
 
 # Mount static files
 static_path = Path(__file__).parent / "static"

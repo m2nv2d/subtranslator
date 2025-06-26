@@ -43,6 +43,15 @@ class Settings(BaseSettings):
         description="Maximum number of concurrent translation tasks allowed application-wide",
         gt=0
     )
+    SESSION_FILE_LIMIT: int = Field(
+        default=50,
+        description="Maximum number of files that can be uploaded per session",
+        gt=0
+    )
+    SESSION_SECRET_KEY: str = Field(
+        default="your-secret-key-change-in-production",
+        description="Secret key for session middleware"
+    )
     
     # Configure .env file support
     model_config = SettingsConfigDict(

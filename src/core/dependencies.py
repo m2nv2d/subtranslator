@@ -5,6 +5,7 @@ import asyncio
 
 from core.config import get_settings, Settings
 from core.stats import AppStatsStore
+from core.rate_limiter import RateLimiter, get_rate_limiter
 from fastapi import Depends, HTTPException
 from google import genai
 from pydantic import ValidationError as PydanticValidationError
@@ -95,3 +96,10 @@ def get_stats_store() -> AppStatsStore:
     store = AppStatsStore()
     logger.info("Application Statistics Store initialized.")
     return store
+
+def get_application_rate_limiter(settings: Settings = Depends(get_application_settings)) -> RateLimiter:
+    """Dependency provider for the application rate limiter.
+
+    Returns the global rate limiter instance initialized with current settings.
+    """
+    return get_rate_limiter(settings)
