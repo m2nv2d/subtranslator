@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     """
     # Required settings
     AI_PROVIDER: str = Field(default="google-gemini", description="AI provider to use for translation")
-    AI_API_KEY: str = Field(..., description="API key for the AI provider")
+    AI_API_KEY: str = Field(default="", description="API key for the AI provider")
     FAST_MODEL: str = Field(default="gemini-2.5-flash-preview-04-17", description="Model name for fast translations")
     NORMAL_MODEL: str = Field(default="gemini-2.5-pro-preview-03-25", description="Model name for normal translations")
     
@@ -103,13 +103,27 @@ class Settings(BaseSettings):
             return "INFO"
         return level
     
+    @field_validator("AI_PROVIDER")
+    @classmethod
+    def validate_ai_provider(cls, v):
+        """Validate that AI_PROVIDER is one of the supported values."""
+        valid_providers = ["google-gemini", "mock"]
+        if v.lower() not in valid_providers:
+            raise ValueError(f"AI_PROVIDER must be one of {valid_providers}, got: {v}")
+        return v.lower()
+    
     @model_validator(mode="after")
     def validate_model_names(self):
-        """Validate model names based on the AI provider."""
+        """Validate model names and API key based on the AI provider."""
         if self.AI_PROVIDER == "google-gemini":
-            # For Google Gemini, ensure model names are provided
+            # For Google Gemini, ensure model names and API key are provided
             if not self.FAST_MODEL or not self.NORMAL_MODEL:
                 raise ValueError("FAST_MODEL and NORMAL_MODEL must be specified when using google-gemini provider")
+            if not self.AI_API_KEY:
+                raise ValueError("AI_API_KEY is required when using google-gemini provider")
+        elif self.AI_PROVIDER == "mock":
+            # For mock provider, API key is optional, models are ignored
+            pass
         
         return self
 

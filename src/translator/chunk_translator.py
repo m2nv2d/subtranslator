@@ -4,6 +4,7 @@ from functools import wraps
 
 import json
 import logging
+import random
 
 from google import genai
 from google.genai import types
@@ -110,12 +111,23 @@ async def _translate_single_chunk(
           The function itself focuses on the translation logic for one attempt.
     """
     async with semaphore: # Acquire semaphore lock
-        if speed_mode == "mock":
-            # Mock Logic: Copy original content to translated_content
+        if speed_mode.startswith("mock"):
+            # Mock Logic: Copy original content to translated_content with speed-based delay
             for block in chunk:
                 block.translated_content = block.content
-            await asyncio.sleep(0.1)
-            print(f"Chunk {chunk_index} processed (mock).")
+            
+            # Speed-based delay based on original speed mode
+            if speed_mode == "mock_fast":
+                delay = random.uniform(5.0, 8.0)
+            elif speed_mode == "mock_normal":
+                delay = random.uniform(8.0, 13.0)
+            else:  # fallback for plain "mock"
+                delay = random.uniform(5.0, 8.0)
+            
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Mock translation for chunk {chunk_index} will take {delay:.2f} seconds ({speed_mode})")
+            await asyncio.sleep(delay)
+            logger.info(f"Chunk {chunk_index} processed (mock) after {delay:.2f} seconds.")
         else:
             request_prompt = ""
             for i, block in enumerate(chunk):

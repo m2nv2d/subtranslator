@@ -6,12 +6,9 @@ import asyncio
 from core.config import get_settings, Settings
 from core.stats import AppStatsStore
 from core.rate_limiter import RateLimiter, get_rate_limiter
+from core.providers import AIProvider, create_provider
 from fastapi import Depends, HTTPException
-from google import genai
 from pydantic import ValidationError as PydanticValidationError
-
-from translator.exceptions import GenAIClientInitError
-from translator.gemini_helper import init_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -46,28 +43,23 @@ def get_application_settings() -> Settings:
         )
 
 @functools.lru_cache()
-def get_genai_client(settings: Settings = Depends(get_application_settings)) -> genai.client.Client | None:
-    """Dependency provider for the Generative AI client.
+def get_ai_provider(settings: Settings = Depends(get_application_settings)) -> AIProvider:
+    """Dependency provider for the AI provider.
 
-    Initializes the client based on the configuration.
-    Returns None if the provider is not 'google-gemini' or if initialization fails.
+    Initializes the provider based on the configuration.
+    Raises HTTPException 500 if provider initialization fails.
     """
-    if settings.AI_PROVIDER != "google-gemini":
-        logger.warning(f"AI provider is '{settings.AI_PROVIDER}', not 'google-gemini'. AI client will not be initialized.")
-        return None
-
-    logger.info("Initializing Generative AI client...")
+    logger.info(f"Initializing AI provider: {settings.AI_PROVIDER}")
     try:
-        client = init_genai_client(settings)
-        logger.info("Generative AI client initialized successfully.")
-        return client
-    except GenAIClientInitError as e:
-        # Log the error, but return None as the client is unavailable.
-        logger.error(f"Failed to initialize Generative AI client: {e}")
-        return None
+        provider = create_provider(settings)
+        logger.info(f"AI provider '{settings.AI_PROVIDER}' initialized successfully.")
+        return provider
     except Exception as e:
-        logger.error(f"An unexpected error occurred during Generative AI client initialization: {e}", exc_info=True)
-        return None 
+        logger.error(f"Failed to initialize AI provider '{settings.AI_PROVIDER}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Server Configuration Error: Failed to initialize AI provider '{settings.AI_PROVIDER}': {str(e)}"
+        ) 
 
 @functools.lru_cache()
 def get_translation_semaphore(settings: Settings = Depends(get_application_settings)) -> asyncio.Semaphore:

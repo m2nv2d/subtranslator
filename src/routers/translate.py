@@ -10,16 +10,13 @@ from typing import Annotated, Tuple
 from fastapi import APIRouter, Request, File, Form, UploadFile, HTTPException, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from google import genai
 from tenacity import RetryError
 from werkzeug.utils import secure_filename
 import aiofiles
 
 from translator import (
     parse_srt,
-    detect_context,
     reassemble_srt,
-    translate_all_chunks,
     SubtitleBlock,
     ValidationError,
     ParsingError,
@@ -28,7 +25,8 @@ from translator import (
 )
 
 from core.config import Settings
-from core.dependencies import get_application_settings, get_genai_client, get_translation_semaphore, get_stats_store, get_application_rate_limiter
+from core.dependencies import get_application_settings, get_ai_provider, get_translation_semaphore, get_stats_store, get_application_rate_limiter
+from core.providers import AIProvider
 from core.stats import AppStatsStore, TotalStats, FileStats
 from core.rate_limiter import check_session_file_limit
 
@@ -68,7 +66,7 @@ async def get_statistics(
 async def translate_srt(
     request: Request,
     settings: Annotated[Settings, Depends(get_application_settings)],
-    genai_client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
+    provider: Annotated[AIProvider, Depends(get_ai_provider)],
     semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
     stats_store: Annotated[AppStatsStore, Depends(get_stats_store)],
     _: None = Depends(check_session_file_limit),
@@ -84,21 +82,8 @@ async def translate_srt(
     temp_dir = None
 
     try:
-        # Client Check
-        client_required = speed_mode != "mock" and settings.AI_PROVIDER == "google-gemini"
-        if client_required and genai_client is None:
-            if settings.AI_PROVIDER != "google-gemini":
-                logger.error("Translation request failed: AI provider '%s' does not support non-mock translation.", settings.AI_PROVIDER)
-                raise HTTPException(
-                    status_code=501,
-                    detail=f"Service Unavailable: AI provider '{settings.AI_PROVIDER}' does not support non-mock translation."
-                )
-            else:
-                logger.error("Translation request failed: Generative AI client is configured but not available.")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Service Unavailable: Translation backend not ready or failed to initialize."
-                )
+        # Provider is guaranteed to be available due to dependency injection
+        logger.debug(f"Using AI provider: {settings.AI_PROVIDER}")
 
         # Input Validation
         if not file.filename or not file.filename.lower().endswith('.srt'):
@@ -150,21 +135,19 @@ async def translate_srt(
 
             # 2. Detect Context
             logger.debug(f"Detecting context for {request_id}...")
-            context: str = await detect_context(
-                subtitle_chunks, speed_mode, genai_client, settings
+            context: str = await provider.detect_context(
+                subtitle_chunks, speed_mode
             )
             logger.info(f"Detected context for {request_id}: '{context[:100]}...'" if context else f"No context detected for {request_id}.")
 
             # 3. Translate Chunks (Assumes modification in-place, returns stats)
             logger.debug(f"Translating chunks for {request_id}...")
             # NOTE: Assumes translate_all_chunks returns Tuple[int, int] as per Subtask 4 spec
-            failed_attempts, chunks_with_failures = await translate_all_chunks(
+            failed_attempts, chunks_with_failures = await provider.translate_all_chunks(
                 context=context,
                 sub=subtitle_chunks, # Pass list to be modified in-place
                 target_lang=target_lang,
                 speed_mode=speed_mode,
-                client=genai_client,
-                settings=settings,
                 semaphore=semaphore,
             )
             logger.info(f"Chunks translated for {request_id} with {failed_attempts} total attempts and {chunks_with_failures} chunks having failures.")

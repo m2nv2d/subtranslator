@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import random
 from typing import Optional
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from functools import wraps
@@ -56,7 +57,10 @@ async def detect_context(
 
     if speed_mode == "mock":
         logger.debug("Using mock context detection.")
-        # Return a hardcoded context for mock mode
+        # Speed-based delay: fast mode = 5-8 seconds, normal mode = 8-13 seconds
+        delay = random.uniform(5.0, 8.0)  # Default to fast timing for backward compatibility
+        logger.debug(f"Mock context detection will take {delay:.2f} seconds")
+        await asyncio.sleep(delay)
         return "Mock Context Detected"
 
     elif speed_mode in ["fast", "normal"]:
