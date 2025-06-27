@@ -52,6 +52,10 @@ class Settings(BaseSettings):
         default="your-secret-key-change-in-production",
         description="Secret key for session middleware"
     )
+    SHOW_SPEED_SELECTOR: bool = Field(
+        default=True,
+        description="Whether to show translation speed selector in the UI"
+    )
     
     # Configure .env file support - exclude environment variables
     model_config = SettingsConfigDict(

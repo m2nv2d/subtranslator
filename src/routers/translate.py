@@ -86,7 +86,11 @@ async def index(request: Request, settings: Annotated[Settings, Depends(get_appl
     logger.debug("Serving index page.")
     return templates.TemplateResponse(
         "index_multiscreen.html",
-        {"request": request, "languages": settings.TARGET_LANGUAGES}
+        {
+            "request": request, 
+            "languages": settings.TARGET_LANGUAGES,
+            "show_speed_selector": settings.SHOW_SPEED_SELECTOR
+        }
     )
 
 
