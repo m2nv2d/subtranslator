@@ -36,6 +36,8 @@ This directory contains comprehensive documentation for the Subtranslator applic
 | `config.py` | [core/modules/config.md](./core/modules/config.md) | Pydantic-based configuration management |
 | `dependencies.py` | [core/modules/dependencies.md](./core/modules/dependencies.md) | FastAPI dependency injection providers |
 | `errors.py` | [core/modules/errors.md](./core/modules/errors.md) | Standardized error response utilities |
+| `providers.py` | [core/modules/providers.md](./core/modules/providers.md) | AI provider abstraction layer |
+| `rate_limiter.py` | [core/modules/rate_limiter.md](./core/modules/rate_limiter.md) | Session-based rate limiting system |
 | `stats.py` | [core/modules/stats.md](./core/modules/stats.md) | In-memory application statistics tracking |
 
 ### Translator Modules (`src/translator/`)
@@ -79,6 +81,7 @@ This directory contains comprehensive documentation for the Subtranslator applic
 | `test_context_detector.py` | [tests/test_context_detector.md](./tests/test_context_detector.md) | AI context detection testing |
 | `test_gemini_helper.py` | [tests/test_gemini_helper.md](./tests/test_gemini_helper.md) | AI client initialization testing |
 | `test_parser.py` | [tests/test_parser.md](./tests/test_parser.md) | SRT parsing and chunking tests |
+| `test_rate_limiter.py` | [tests/test_rate_limiter.md](./tests/test_rate_limiter.md) | Session-based rate limiting testing |
 | `test_reassembly_flow.py` | [tests/test_reassembly_flow.md](./tests/test_reassembly_flow.md) | Complete workflow integration testing |
 | `test_translate_api.sh` | [tests/test_translate_api.md](./tests/test_translate_api.md) | HTTP API endpoint testing |
 
@@ -91,6 +94,8 @@ src/main.py                           → docs/main.md
 src/core/config.py                    → docs/core/modules/config.md
 src/core/dependencies.py              → docs/core/modules/dependencies.md
 src/core/errors.py                    → docs/core/modules/errors.md
+src/core/providers.py                 → docs/core/modules/providers.md
+src/core/rate_limiter.py              → docs/core/modules/rate_limiter.md
 src/core/stats.py                     → docs/core/modules/stats.md
 src/translator/exceptions.py          → docs/translator/modules/exceptions.md
 src/translator/models.py              → docs/translator/modules/models.md
@@ -113,6 +118,7 @@ tests/manual/test_config.py              → docs/tests/test_config.md
 tests/manual/test_context_detector.py    → docs/tests/test_context_detector.md
 tests/manual/test_gemini_helper.py       → docs/tests/test_gemini_helper.md
 tests/manual/test_parser.py              → docs/tests/test_parser.md
+tests/manual/test_rate_limiter.py        → docs/tests/test_rate_limiter.md
 tests/manual/test_reassembly_flow.py     → docs/tests/test_reassembly_flow.md
 tests/manual/test_translate_api.sh       → docs/tests/test_translate_api.md
 ```

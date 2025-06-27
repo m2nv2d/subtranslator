@@ -12,6 +12,8 @@ src/core/
 ├── config.py            # Pydantic Settings configuration management
 ├── dependencies.py      # FastAPI dependency providers
 ├── errors.py            # Error response utilities
+├── providers.py         # AI provider abstraction layer
+├── rate_limiter.py      # Session-based rate limiting
 └── stats.py             # In-memory statistics tracking
 ```
 
@@ -23,9 +25,11 @@ src/core/
 
 ### Dependencies (FastAPI Dependency Injection)
 - `get_application_settings()`: Cached settings provider
-- `get_genai_client()`: AI client provider
+- `get_ai_provider()`: AI provider factory and manager
 - `get_translation_semaphore()`: Concurrency control provider
 - `get_stats_store()`: Statistics store provider
+- `get_application_rate_limiter()`: Rate limiter provider
+- `check_session_file_limit()`: Session rate limiting dependency
 
 ### Error Handling
 - `ErrorDetail` model: Standardized error response format
@@ -36,12 +40,24 @@ src/core/
 - `TotalStats` model: Aggregated application statistics  
 - `AppStatsStore` class: Thread-safe statistics management
 
+### AI Providers
+- `AIProvider` interface: Abstract base class for translation providers
+- `MockProvider` class: Development and testing provider
+- `GeminiProvider` class: Google Gemini integration provider
+- `create_provider()` function: Provider factory
+
+### Rate Limiting
+- `RateLimiter` class: Session-based file upload limiting
+- `get_rate_limiter()` function: Singleton rate limiter provider
+
 ## Design Pattern
 
 The core package follows the **Dependency Injection** pattern using FastAPI's built-in DI system. This provides:
 
 - **Centralized Configuration**: All settings managed through a single source of truth
-- **Singleton Services**: Shared instances (AI client, semaphore, stats store) across requests
+- **Singleton Services**: Shared instances (AI providers, semaphores, stats store, rate limiters) across requests
+- **Provider Abstraction**: AI services abstracted behind common interface for flexibility
+- **Session Management**: UUID-based session tracking for rate limiting
 - **Testability**: Easy mocking of dependencies for unit tests
 - **Separation of Concerns**: Clear boundaries between configuration, services, and business logic
 
@@ -58,9 +74,10 @@ The core package follows the **Dependency Injection** pattern using FastAPI's bu
 - Error handling provides domain-specific exception mapping
 
 ### With External Services
-- AI client initialization and management
+- AI provider abstraction and management
 - Environment variable configuration loading
 - Logging configuration based on settings
+- Session management and rate limiting
 
 ## Best Practices
 
@@ -81,27 +98,33 @@ The core package follows the **Dependency Injection** pattern using FastAPI's bu
 
 ### Dependency Usage
 ```python
-# Correct way to access configuration
+# Correct way to access configuration and services
 @router.post("/translate")
 async def translate_srt(
+    request: Request,
     settings: Annotated[Settings, Depends(get_application_settings)],
-    client: Annotated[genai.client.Client | None, Depends(get_genai_client)],
-    # ... other dependencies
+    provider: Annotated[AIProvider, Depends(get_ai_provider)],
+    semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
+    stats_store: Annotated[AppStatsStore, Depends(get_stats_store)],
+    _: None = Depends(check_session_file_limit),  # Rate limiting
+    # ... other parameters
 ):
-    # Use settings and client in route logic
+    # Use provider abstraction and other services
 ```
 
 ## Performance Considerations
 
 ### Caching Strategy
 - Settings are cached using `@lru_cache` for performance
-- AI client is initialized once and reused across requests
+- AI providers are initialized once and reused across requests
 - Statistics store is a singleton to maintain consistent state
+- Rate limiter is a singleton for global session tracking
 
 ### Thread Safety
 - Statistics store uses async locks for concurrent access
 - Semaphore provides global concurrency control
 - Settings are immutable after initialization
+- Rate limiter uses in-memory dictionary with singleton pattern
 
 ### Resource Management
 - Dependencies are managed by FastAPI's lifecycle
@@ -111,14 +134,17 @@ async def translate_srt(
 ## Error Scenarios
 
 ### Configuration Errors
-- Missing required environment variables (AI_API_KEY)
+- Missing required environment variables (AI_API_KEY for google-gemini provider)
 - Invalid configuration values (negative numbers, invalid log levels)
-- AI client initialization failures
+- Invalid AI provider selection (must be google-gemini or mock)
+- AI provider initialization failures
 
 ### Runtime Errors  
 - Statistics store corruption (handled gracefully)
 - Semaphore exhaustion (controlled by configuration)
 - Dependency injection failures (proper error responses)
+- Rate limiting errors (HTTP 429 when session limits exceeded)
+- Session management failures (missing or invalid session IDs)
 
 ## Monitoring and Observability
 
@@ -127,6 +153,8 @@ async def translate_srt(
 - Individual file processing statistics
 - Error rates and failure patterns
 - Processing times and resource utilization
+- Session-based rate limiting statistics
+- AI provider usage patterns
 
 ### Access Patterns
 ```python

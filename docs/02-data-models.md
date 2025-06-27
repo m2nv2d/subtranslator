@@ -140,6 +140,65 @@ async def complete_request(request_id: str, status: str)
 async def get_stats() -> tuple[TotalStats, dict[str, FileStats]]
 ```
 
+## AI Provider Models
+
+### AIProvider
+**File**: `src/core/providers.py:22`
+
+Abstract base class defining the interface for all AI translation providers.
+
+```python
+class AIProvider(abc.ABC):
+    def __init__(self, settings: Settings):
+        self.settings = settings
+    
+    @abc.abstractmethod
+    async def detect_context(self, sub: list[list[SubtitleBlock]], speed_mode: str) -> str:
+        pass
+    
+    @abc.abstractmethod
+    async def translate_all_chunks(
+        self, context: str, sub: list[list[SubtitleBlock]], 
+        target_lang: str, speed_mode: str, semaphore: asyncio.Semaphore
+    ) -> Tuple[int, int]:
+        pass
+```
+
+**Implementation Classes**:
+- `MockProvider`: Testing/development provider with configurable delays
+- `GeminiProvider`: Google Gemini API integration provider
+
+**Design Pattern**: Strategy pattern enabling runtime provider switching based on configuration.
+
+## Rate Limiting Models
+
+### RateLimiter
+**File**: `src/core/rate_limiter.py:13`
+
+Session-based rate limiting system for file upload abuse prevention.
+
+```python
+class RateLimiter:
+    def __init__(self, settings: Settings):
+        self.file_limit = settings.SESSION_FILE_LIMIT
+        self.session_counts: Dict[str, int] = {}
+    
+    def check_limit(self, session_id: str) -> None:
+        # Raises HTTPException if limit exceeded
+    
+    def get_session_count(self, session_id: str) -> int:
+        # Returns current file count for session
+    
+    def reset_session(self, session_id: str) -> None:
+        # Resets file count for session
+```
+
+**Key Features**:
+- In-memory session tracking using dictionary storage
+- Configurable limits via `SESSION_FILE_LIMIT` setting
+- HTTP 429 exceptions when limits are exceeded
+- Thread-safe singleton pattern implementation
+
 ## Configuration Models
 
 ### Settings
@@ -150,7 +209,7 @@ Comprehensive application configuration using Pydantic BaseSettings.
 ```python
 class Settings(BaseSettings):
     AI_PROVIDER: str = Field(default="google-gemini")
-    AI_API_KEY: str = Field(...)
+    AI_API_KEY: str = Field(default="")
     FAST_MODEL: str = Field(default="gemini-2.5-flash-preview-04-17")
     NORMAL_MODEL: str = Field(default="gemini-2.5-pro-preview-03-25")
     TARGET_LANGUAGES: Annotated[tuple[str, ...], NoDecode] = Field(default=("Vietnamese", "French"))
@@ -158,14 +217,19 @@ class Settings(BaseSettings):
     RETRY_MAX_ATTEMPTS: int = Field(default=4, ge=0)
     LOG_LEVEL: str = Field(default="INFO")
     MAX_CONCURRENT_TRANSLATIONS: int = Field(default=10, gt=0)
+    SESSION_FILE_LIMIT: int = Field(default=50, gt=0)
+    SESSION_SECRET_KEY: str = Field(default="your-secret-key-change-in-production")
 ```
 
 **Validation Rules**:
+- `AI_PROVIDER`: Must be one of `["google-gemini", "mock"]`
+- `AI_API_KEY`: Required for `google-gemini` provider, optional for `mock`
 - `TARGET_LANGUAGES`: Custom validator parses comma-separated strings into tuples
 - `LOG_LEVEL`: Restricted to valid Python logging levels
 - `CHUNK_MAX_BLOCKS`: Must be positive integer for proper chunking
 - `MAX_CONCURRENT_TRANSLATIONS`: Controls semaphore limits for concurrency
-- `AI_API_KEY`: Required field that must be provided via environment
+- `SESSION_FILE_LIMIT`: Must be positive integer for rate limiting
+- `SESSION_SECRET_KEY`: Session middleware encryption key
 
 **Environment Integration**:
 - Loads from `.env` files automatically
@@ -231,6 +295,18 @@ Environment Variables → Settings → Dependencies → Components
                      (validation) (injection)   (usage)
 ```
 
+### Provider Relationships
+```
+Settings.AI_PROVIDER → create_provider() → AIProvider → Translation Logic
+                    (factory)         (interface)  (implementation)
+```
+
+### Rate Limiting Relationships
+```
+Session Middleware → Session ID → RateLimiter → Request Validation
+                 (assignment)    (tracking)   (enforcement)
+```
+
 ## Key Design Patterns
 
 ### Immutable Configuration
@@ -274,14 +350,25 @@ def validate_log_level(cls, v):
     return v.upper()
 ```
 
-### Model Name Validation
+### AI Provider Validation
 ```python
+@field_validator("AI_PROVIDER")
+@classmethod
+def validate_ai_provider(cls, v):
+    valid_providers = ["google-gemini", "mock"]
+    if v.lower() not in valid_providers:
+        raise ValueError(f"AI_PROVIDER must be one of {valid_providers}, got: {v}")
+    return v.lower()
+
 @model_validator(mode="after")
 def validate_model_names(self):
     if self.AI_PROVIDER == "google-gemini":
-        required_models = [self.FAST_MODEL, self.NORMAL_MODEL]
-        for model in required_models:
-            if not model.startswith("gemini-"):
-                raise ValueError(f"Invalid model name for Google Gemini: {model}")
+        if not self.FAST_MODEL or not self.NORMAL_MODEL:
+            raise ValueError("FAST_MODEL and NORMAL_MODEL must be specified when using google-gemini provider")
+        if not self.AI_API_KEY:
+            raise ValueError("AI_API_KEY is required when using google-gemini provider")
+    elif self.AI_PROVIDER == "mock":
+        # For mock provider, API key is optional, models are ignored
+        pass
     return self
 ```
