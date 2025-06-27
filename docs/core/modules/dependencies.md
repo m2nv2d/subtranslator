@@ -18,6 +18,7 @@ The `dependencies.py` module serves as the central dependency injection hub for 
 - Statistics tracking through `core.stats`
 - Rate limiting through `core.rate_limiter`
 - Concurrency control using asyncio semaphores
+- HTTP client management for OpenRouter provider (aiohttp)
 
 ## 🔍 Abstraction-Level Reference
 
@@ -81,11 +82,11 @@ def get_ai_provider(settings: Settings = Depends(get_application_settings)) -> A
 - `settings: Settings` - Application configuration (injected dependency)
 
 **Returns**: 
-- `AIProvider` - Initialized AI provider instance (MockProvider or GeminiProvider)
+- `AIProvider` - Initialized AI provider instance (MockProvider, GeminiProvider, or OpenRouterProvider)
 
 **Behavior**: 
 - Creates provider based on settings.AI_PROVIDER configuration
-- Supports "google-gemini" and "mock" providers
+- Supports "google-gemini", "openrouter", and "mock" providers
 - Handles initialization failures by raising HTTP 500 exceptions
 - Caches successful provider instances
 - Logs all initialization attempts and outcomes
@@ -117,9 +118,10 @@ async def translate_text(
 
 **Tips/Notes**:
 - Provider is guaranteed to be initialized or HTTP 500 is raised
-- Supports both production (Google Gemini) and development (Mock) workflows
+- Supports production (Google Gemini, OpenRouter) and development (Mock) workflows
 - Provider abstraction enables easy testing and development
 - All providers implement the same interface for consistent usage
+- OpenRouter provider requires aiohttp dependency for HTTP-based API calls
 
 ---
 
@@ -346,6 +348,7 @@ The dependencies form a clear hierarchy:
 - Converted to HTTP 500 exceptions for initialization failures
 - Provider is guaranteed to be available or request fails
 - Supports fallback to mock provider for development/testing
+- OpenRouter provider errors include HTTP API communication failures
 
 ### Resource Initialization Errors
 - Logged with full context

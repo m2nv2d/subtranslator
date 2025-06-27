@@ -38,7 +38,7 @@ class Settings(BaseSettings)
 - `AI_API_KEY: str` - API key for the AI provider (required, no default)
 
 #### Optional Fields with Defaults
-- `AI_PROVIDER: str = "google-gemini"` - AI provider to use for translation
+- `AI_PROVIDER: str = "google-gemini"` - AI provider to use for translation (supports: google-gemini, openrouter, mock)
 - `FAST_MODEL: str = "gemini-2.5-flash-preview-04-17"` - Model for fast translations
 - `NORMAL_MODEL: str = "gemini-2.5-pro-preview-03-25"` - Model for normal translations
 - `TARGET_LANGUAGES: tuple[str, ...] = ("Vietnamese", "French")` - Available target languages
@@ -166,6 +166,51 @@ export LOG_LEVEL=debug  # Automatically converted to "DEBUG"
 
 ---
 
+### `load_provider_specific_config` Method
+
+```python
+@model_validator(mode="before")
+@classmethod
+def load_provider_specific_config(cls, values: dict) -> dict
+```
+
+**Description**: Pre-validation method that loads provider-specific configuration from .env values, allowing provider-specific API keys and model names.
+
+**Parameters**:
+- `values: dict` - Raw configuration values before validation
+
+**Returns**: 
+- `dict` - Modified configuration values with provider-specific settings mapped to generic fields
+
+**Behavior**: 
+- Maps provider-specific keys to generic configuration fields
+- For `google-gemini`: Maps `GEMINI_API_KEY` → `AI_API_KEY`, `GEMINI_FAST_MODEL` → `FAST_MODEL`, etc.
+- For `openrouter`: Maps `OPENROUTER_API_KEY` → `AI_API_KEY`, `OPENROUTER_FAST_MODEL` → `FAST_MODEL`, etc.
+- Provides sensible defaults for OpenRouter models if not specified
+- Falls back to generic keys if provider-specific keys are not found
+
+**Example Usage**:
+```bash
+# OpenRouter configuration
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_openrouter_key
+OPENROUTER_FAST_MODEL=google/gemini-2.5-flash
+OPENROUTER_NORMAL_MODEL=google/gemini-2.5-pro
+
+# Google Gemini configuration  
+AI_PROVIDER=google-gemini
+GEMINI_API_KEY=your_gemini_key
+GEMINI_FAST_MODEL=gemini-2.5-flash-preview-04-17
+GEMINI_NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+```
+
+**Tips/Notes**:
+- Automatically called during Settings initialization
+- Enables clean separation of provider-specific configurations
+- Maintains backward compatibility with generic field names
+
+---
+
 ### `validate_model_names` Method
 
 ```python
@@ -182,11 +227,13 @@ def validate_model_names(self) -> Settings
 
 **Behavior**: 
 - Validates model configuration based on AI_PROVIDER
-- Ensures required models are specified for google-gemini provider
+- Ensures required models and API keys are specified for google-gemini provider
+- Ensures required API key is specified for openrouter provider
 - Can be extended for other AI providers
 
 **Raises**: 
-- `ValueError` - If required model names are missing for google-gemini provider
+- `ValueError` - If required model names or API keys are missing for google-gemini provider
+- `ValueError` - If required API key is missing for openrouter provider
 
 **Tips/Notes**:
 - Provider-specific validation logic
@@ -201,7 +248,7 @@ def validate_model_names(self) -> Settings
 def get_settings() -> Settings
 ```
 
-**Description**: Factory function that loads and returns application settings with proper error handling.
+**Description**: Factory function that loads and returns application settings with proper error handling. Supports command-line argument overrides and excludes environment variables to prevent conflicts.
 
 **Returns**: 
 - `Settings` - Configured settings instance
@@ -209,8 +256,11 @@ def get_settings() -> Settings
 **Behavior**: 
 - Locates project root directory automatically
 - Attempts to load .env file from project root
+- Parses command-line arguments for configuration overrides (--key=value format)
+- Excludes environment variables to prevent conflicts with .env files
 - Handles missing .env files gracefully
 - Provides detailed error logging
+- Falls back to mock provider if initial loading fails
 
 **Raises**: 
 - `Exception` - Re-raises any configuration loading errors after logging
@@ -252,15 +302,55 @@ LOG_LEVEL=DEBUG
 MAX_CONCURRENT_TRANSLATIONS=5
 ```
 
-### .env File
-```env
-# Required settings
-AI_API_KEY=your_google_api_key_here
+### .env File Examples
 
-# AI Configuration
+#### OpenRouter Configuration
+```env
+# AI Provider Configuration
+AI_PROVIDER=openrouter
+
+# OpenRouter Configuration
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_FAST_MODEL=google/gemini-2.5-flash
+OPENROUTER_NORMAL_MODEL=google/gemini-2.5-pro
+
+# Translation Settings
+TARGET_LANGUAGES=Vietnamese,French,Spanish
+CHUNK_MAX_BLOCKS=100
+RETRY_MAX_ATTEMPTS=4
+MAX_CONCURRENT_TRANSLATIONS=10
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+#### Google Gemini Configuration
+```env
+# AI Provider Configuration
 AI_PROVIDER=google-gemini
-FAST_MODEL=gemini-2.5-flash-preview-04-17
-NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+
+# Google Gemini Configuration  
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_FAST_MODEL=gemini-2.5-flash-preview-04-17
+GEMINI_NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+
+# Translation Settings
+TARGET_LANGUAGES=Vietnamese,French,Spanish
+CHUNK_MAX_BLOCKS=100
+RETRY_MAX_ATTEMPTS=4
+MAX_CONCURRENT_TRANSLATIONS=10
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+#### Generic/Fallback Configuration
+```env
+# Generic fallback configuration (used if provider-specific keys are not set)
+AI_PROVIDER=google-gemini
+AI_API_KEY=fallback_api_key
+FAST_MODEL=fallback_fast_model
+NORMAL_MODEL=fallback_normal_model
 
 # Translation Settings
 TARGET_LANGUAGES=Vietnamese,French,Spanish

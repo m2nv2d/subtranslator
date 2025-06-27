@@ -57,9 +57,29 @@ Production provider that integrates with Google's Gemini AI models.
 **Configuration:**
 ```bash
 AI_PROVIDER=google-gemini
-AI_API_KEY=your_gemini_api_key_here
-FAST_MODEL=gemini-2.5-flash-preview-04-17
-NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_FAST_MODEL=gemini-2.5-flash-preview-04-17
+GEMINI_NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+```
+
+### OpenRouterProvider
+
+Production provider that integrates with OpenRouter's API for accessing various AI models.
+
+**Features:**
+- HTTP-based API integration with OpenRouter
+- Support for fast and normal translation modes
+- Real AI-powered context detection and translation
+- Access to multiple AI models through OpenRouter's platform
+- Structured JSON responses for translation
+- Text responses for context detection
+
+**Configuration:**
+```bash
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_FAST_MODEL=google/gemini-2.5-flash
+OPENROUTER_NORMAL_MODEL=google/gemini-2.5-pro
 ```
 
 ## Configuration
@@ -70,23 +90,37 @@ The provider system is configured through environment variables:
 
 ```bash
 # Provider Selection
-AI_PROVIDER=google-gemini  # or "mock"
+AI_PROVIDER=google-gemini  # or "openrouter" or "mock"
 
-# API Configuration
-AI_API_KEY=your_api_key_here
+# Provider-specific API Configuration
+GEMINI_API_KEY=your_gemini_api_key_here         # For Google Gemini
+OPENROUTER_API_KEY=your_openrouter_api_key_here # For OpenRouter
 
-# Model Configuration (Gemini only)
-FAST_MODEL=gemini-2.5-flash-preview-04-17
-NORMAL_MODEL=gemini-2.5-pro-preview-03-25
+# Provider-specific Model Configuration
+GEMINI_FAST_MODEL=gemini-2.5-flash-preview-04-17   # For Google Gemini
+GEMINI_NORMAL_MODEL=gemini-2.5-pro-preview-03-25   # For Google Gemini
+OPENROUTER_FAST_MODEL=google/gemini-2.5-flash      # For OpenRouter
+OPENROUTER_NORMAL_MODEL=google/gemini-2.5-pro      # For OpenRouter
+
+# Fallback/Generic Configuration (used if provider-specific keys are not set)
+AI_API_KEY=fallback_api_key
+FAST_MODEL=fallback_fast_model
+NORMAL_MODEL=fallback_normal_model
 ```
 
 ### Validation
 
 The configuration system validates provider settings:
 
-- **AI_PROVIDER**: Must be one of `["google-gemini", "mock"]`
-- **AI_API_KEY**: Required for `google-gemini`, optional for `mock`
-- **Models**: Required for `google-gemini`, ignored for `mock`
+- **AI_PROVIDER**: Must be one of `["google-gemini", "openrouter", "mock"]`
+- **API Keys**: 
+  - Required for `google-gemini` (GEMINI_API_KEY or AI_API_KEY)
+  - Required for `openrouter` (OPENROUTER_API_KEY or AI_API_KEY)
+  - Optional for `mock`
+- **Models**: 
+  - Required for `google-gemini` (provider-specific or generic model fields)
+  - Required for `openrouter` (provider-specific or generic model fields)
+  - Ignored for `mock`
 
 ## Usage
 
@@ -104,6 +138,8 @@ def create_provider(settings: Settings) -> AIProvider:
         provider = GeminiProvider(settings)
         provider.initialize()
         return provider
+    elif provider_type == "openrouter":
+        return OpenRouterProvider(settings)
     else:
         raise ValueError(f"Unsupported AI provider: {settings.AI_PROVIDER}")
 ```
@@ -181,6 +217,26 @@ async def translate_all_chunks(self, context: str, sub: list[list[SubtitleBlock]
     return await translate_all_chunks(
         context=context, sub=sub, target_lang=target_lang,
         speed_mode=speed_mode, client=self.client, 
+        settings=self.settings, semaphore=semaphore,
+    )
+```
+
+### OpenRouter Provider
+
+The OpenRouterProvider uses HTTP-based API calls without requiring a persistent client:
+
+```python
+async def detect_context(self, sub: list[list[SubtitleBlock]], speed_mode: str) -> str:
+    from translator.context_detector import detect_context
+    return await detect_context(sub, speed_mode, None, self.settings)
+
+async def translate_all_chunks(self, context: str, sub: list[list[SubtitleBlock]], 
+                             target_lang: str, speed_mode: str, 
+                             semaphore: asyncio.Semaphore) -> Tuple[int, int]:
+    from translator.chunk_translator import translate_all_chunks
+    return await translate_all_chunks(
+        context=context, sub=sub, target_lang=target_lang,
+        speed_mode=speed_mode, client=None,  # OpenRouter doesn't use a client
         settings=self.settings, semaphore=semaphore,
     )
 ```

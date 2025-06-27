@@ -8,7 +8,7 @@
 
 **Integration points**:
 - Core translation engine for the subtitle translation pipeline
-- Integrates with AI client from gemini_helper module
+- Integrates with AI providers (Google Gemini via gemini_helper module, OpenRouter via HTTP API)
 - Uses Pydantic models for request/response validation
 - Provides detailed statistics for monitoring and debugging
 - Coordinates with context detection results for enhanced translation quality
@@ -56,6 +56,63 @@ TranslatedChunk = RootModel[list[TranslatedBlock]]
 - Ensures all blocks have required fields
 - Supports JSON schema validation
 - Provides structured error messages for validation failures
+
+---
+
+### _call_openrouter_api (HTTP Helper Function)
+
+**Name and signature**: 
+```python
+async def _call_openrouter_api(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    response_format: Optional[dict] = None
+) -> str
+```
+
+**Description and purpose**: Asynchronous helper function for making HTTP API calls to OpenRouter service with structured JSON response support.
+
+**Parameters**:
+- `model` (str): OpenRouter model identifier (e.g., "google/gemini-2.5-flash")
+- `system_prompt` (str): System instruction for the AI model
+- `user_prompt` (str): User message content to translate
+- `api_key` (str): OpenRouter API authentication key
+- `response_format` (Optional[dict]): JSON schema specification for structured responses
+
+**Returns**: 
+- `str`: Raw response text from the OpenRouter API
+
+**Behavior**:
+- Creates OpenAI-compatible message structure with system and user roles
+- Handles structured JSON responses when response_format is provided
+- Uses aiohttp for async HTTP requests
+- Includes proper authentication headers
+- Handles HTTP errors with detailed error messages
+
+**Raises**:
+- `ChunkTranslationError`: HTTP request failures, API errors, or invalid responses
+
+**Example usage**:
+```python
+response_text = await _call_openrouter_api(
+    model="google/gemini-2.5-flash",
+    system_prompt="You are a translator...",
+    user_prompt="Translate this text...",
+    api_key="your_api_key",
+    response_format={
+        "type": "json_schema",
+        "json_schema": {"name": "translation", "schema": {...}}
+    }
+)
+```
+
+**Tips/Notes**:
+- Used internally by _translate_single_chunk for OpenRouter provider
+- Supports both text and structured JSON responses
+- Handles OpenRouter API authentication and error handling
+- Provides async HTTP communication with proper error handling
 
 ---
 
@@ -143,10 +200,11 @@ async def _translate_single_chunk(
 1. **Semaphore Acquisition**: Controls concurrent AI requests
 2. **Mode Processing**: Handles mock mode vs. real AI translation
 3. **Request Preparation**: Formats subtitle content for AI processing
-4. **AI Request**: Makes structured AI request with proper configuration
-5. **Response Validation**: Validates AI response against expected schema
-6. **Content Assignment**: Updates subtitle blocks with translated content
-7. **Error Handling**: Comprehensive error handling with specific exceptions
+4. **Provider Selection**: Routes requests to appropriate AI provider (Google Gemini or OpenRouter)
+5. **AI Request**: Makes structured AI request with provider-specific configuration
+6. **Response Validation**: Validates AI response against expected schema
+7. **Content Assignment**: Updates subtitle blocks with translated content
+8. **Error Handling**: Comprehensive error handling with specific exceptions
 
 **Raises**:
 - `ChunkTranslationError`: AI response validation failures, JSON parsing errors, invalid block indices
@@ -291,6 +349,7 @@ Make sure to return in structured JSON array [...]. Ignore timestamps if there a
 - **Structured Output**: Enforces JSON schema compliance
 - **Line Preservation**: Maintains original line breaks and formatting
 - **Index Mapping**: Ensures proper block order reconstruction
+- **Provider Agnostic**: Same prompt works for both Google Gemini and OpenRouter
 
 ### Response Schema Definition
 
@@ -317,10 +376,11 @@ response_schema = genai.types.Schema(
 - **Error Prevention**: Catches malformed responses early
 - **Type Safety**: Ensures correct data types in responses
 
-### Model Configuration Strategy
+### Provider-Specific Configuration
 
+#### Google Gemini Configuration
 ```python
-# Base configuration
+# Base configuration for Google Gemini
 config_params = {
     'response_mime_type': 'application/json',
     'response_schema': response_schema,
@@ -335,11 +395,41 @@ if speed_mode == "fast":
 model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
 ```
 
+#### OpenRouter Configuration
+```python
+# JSON schema for OpenRouter structured responses
+response_format = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "translation_response",
+        "schema": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "translated_lines": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["index", "translated_lines"]
+            }
+        }
+    }
+}
+
+# Dynamic model selection
+model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+```
+
 **Configuration Features**:
+- **Provider-Specific Schemas**: Google Gemini uses typed schemas, OpenRouter uses JSON Schema
 - **Mode-Specific Optimization**: Different configurations for fast vs. normal mode
 - **Schema Enforcement**: JSON schema validation at AI service level
-- **Thinking Budget**: Controls AI reasoning complexity for speed optimization
+- **Thinking Budget**: Controls AI reasoning complexity for speed optimization (Gemini only)
 - **Dynamic Model Selection**: Runtime model selection based on speed requirements
+- **Unified Interface**: Both providers return the same structured data format
 
 ## Concurrency and Rate Limiting
 

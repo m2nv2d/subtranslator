@@ -7,7 +7,7 @@
 **Design pattern used**: Strategy pattern with retry decorator and async AI integration. Implements multiple processing modes (mock, fast, normal) with configurable retry mechanisms and robust error handling.
 
 **Integration points**:
-- Integrates with AI client from gemini_helper module
+- Integrates with AI providers (Google Gemini via gemini_helper module, OpenRouter via HTTP API)
 - Uses configurable retry logic with application settings
 - Provides context information to chunk translation module
 - Supports multiple processing modes for different performance/quality tradeoffs
@@ -59,6 +59,57 @@ async def my_ai_function(data, mode, client, settings):
 
 ---
 
+### _call_openrouter_text_api (HTTP Helper Function)
+
+**Name and signature**: 
+```python
+async def _call_openrouter_text_api(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str
+) -> str
+```
+
+**Description and purpose**: Asynchronous helper function for making HTTP API calls to OpenRouter service for text-based responses (context detection).
+
+**Parameters**:
+- `model` (str): OpenRouter model identifier (e.g., "google/gemini-2.5-flash")
+- `system_prompt` (str): System instruction for the AI model
+- `user_prompt` (str): User message content to analyze
+- `api_key` (str): OpenRouter API authentication key
+
+**Returns**: 
+- `str`: Text response from the OpenRouter API containing the detected context
+
+**Behavior**:
+- Creates OpenAI-compatible message structure with system and user roles
+- Uses aiohttp for async HTTP requests
+- Includes proper authentication headers
+- Handles HTTP errors with detailed error messages
+- Returns plain text response for context detection
+
+**Raises**:
+- `ContextDetectionError`: HTTP request failures, API errors, or invalid responses
+
+**Example usage**:
+```python
+context = await _call_openrouter_text_api(
+    model="google/gemini-2.5-flash",
+    system_prompt="You are a context detector...",
+    user_prompt="Analyze this subtitle content...",
+    api_key="your_api_key"
+)
+```
+
+**Tips/Notes**:
+- Used internally by detect_context for OpenRouter provider
+- Optimized for text responses (no JSON schema needed)
+- Handles OpenRouter API authentication and error handling
+- Provides async HTTP communication with proper error handling
+
+---
+
 ### detect_context
 
 **Name and signature**: 
@@ -87,9 +138,10 @@ async def detect_context(
 1. **Mode Selection**: Chooses processing strategy based on speed_mode
 2. **Mock Mode**: Returns hardcoded context for testing/development
 3. **AI Modes**: Uses first chunk content to analyze context with AI
-4. **Prompt Engineering**: Applies specialized system prompt for context detection
-5. **Model Selection**: Uses fast or normal model based on speed mode
-6. **Error Handling**: Comprehensive error handling with domain-specific exceptions
+4. **Provider Selection**: Routes requests to appropriate AI provider (Google Gemini or OpenRouter)
+5. **Prompt Engineering**: Applies specialized system prompt for context detection
+6. **Model Selection**: Uses fast or normal model based on speed mode
+7. **Error Handling**: Comprehensive error handling with domain-specific exceptions
 
 **Raises**:
 - `ContextDetectionError`: Invalid speed_mode or other context detection failures
@@ -210,8 +262,9 @@ request_prompt = f"{content}"
 - **Context Awareness**: Different handling for different media types
 - **Concise Output**: Single sentence context description
 
-### AI Client Integration
+### Provider-Specific Integration
 
+#### Google Gemini Integration
 ```python
 response = await genai_client.aio.models.generate_content(
     model=model_to_use,
@@ -229,11 +282,23 @@ response = await genai_client.aio.models.generate_content(
 )
 ```
 
+#### OpenRouter Integration
+```python
+context = await _call_openrouter_text_api(
+    model=model_to_use,
+    system_prompt=system_prompt,
+    user_prompt=request_prompt,
+    api_key=settings.AI_API_KEY
+)
+```
+
 **Integration Features**:
+- **Provider Abstraction**: Unified interface for different AI providers
 - **Async Operations**: Non-blocking AI service calls
 - **Model Selection**: Dynamic model choice based on speed mode
-- **Configuration Management**: Proper request configuration
+- **Configuration Management**: Provider-specific request configuration
 - **Response Handling**: Text-based response processing
+- **Error Consistency**: Unified error handling across providers
 
 ## Error Handling and Retry Strategy
 
