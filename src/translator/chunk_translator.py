@@ -49,7 +49,11 @@ async def _call_openrouter_api(
     
     payload = {
         "model": model,
-        "messages": messages
+        "messages": messages,
+        "reasoning": {
+            "enabled": True,
+            "max_tokens": 128
+        }
     }
     
     if response_format:

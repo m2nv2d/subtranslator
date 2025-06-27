@@ -39,7 +39,10 @@ async def _call_openrouter_text_api(
     
     payload = {
         "model": model,
-        "messages": messages
+        "messages": messages,
+        "reasoning": {
+            "enabled": False
+        }
     }
     
     async with aiohttp.ClientSession() as session:
@@ -113,7 +116,7 @@ async def detect_context(
         system_prompt = "You are a context detector. Your task is to analyze the subtitle content provided and determine the general context in one sentence. Only give me that context read to use. If it's a movie, just give a general theme. If a vlog/tutorial, the general topic the speaker(s) are talking about. The template is: This is a subtitle for a movie/vlog/tutorial/... for/of/about ..."
         request_prompt = f"{content}"
 
-        model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
+        model_to_use = settings.FAST_MODEL
         
         # Check if using OpenRouter provider
         if settings.AI_PROVIDER == "openrouter":
