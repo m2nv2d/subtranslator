@@ -5,6 +5,7 @@ from functools import wraps
 import json
 import logging
 import random
+import requests
 
 from google import genai
 from google.genai import types
@@ -21,6 +22,54 @@ class TranslatedBlock(BaseModel):
     translated_lines: list[str]
 
 TranslatedChunk = RootModel[list[TranslatedBlock]]
+
+async def _call_openrouter_api(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    response_format: Optional[dict] = None
+) -> str:
+    """
+    Helper function to make async API calls to OpenRouter.
+    Returns the response text.
+    """
+    import aiohttp
+    
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": system_prompt}]
+        },
+        {
+            "role": "user", 
+            "content": [{"type": "text", "text": user_prompt}]
+        }
+    ]
+    
+    payload = {
+        "model": model,
+        "messages": messages
+    }
+    
+    if response_format:
+        payload["response_format"] = response_format
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise ChunkTranslationError(f"OpenRouter API error: {response.status} - {error_text}")
+            
+            result = await response.json()
+            return result["choices"][0]["message"]["content"]
 
 def configurable_retry(f):
     @wraps(f)
@@ -135,37 +184,71 @@ async def _translate_single_chunk(
 
             model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
             
-            # Create base config parameters
-            config_params = {
-                'response_mime_type': 'application/json',
-                'response_schema': response_schema,
-                'system_instruction': [
-                    types.Part.from_text(text=system_prompt),
-                ]
-            }
-            
-            # Add thinking_config only for fast mode
-            if speed_mode == "fast":
-                config_params['thinking_config'] = types.ThinkingConfig(thinking_budget=0)
-            
-            response = await genai_client.aio.models.generate_content(
-                model=model_to_use,
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_text(text=request_prompt),
-                        ],
-                    )
-                ],
-                config=types.GenerateContentConfig(**config_params)
-            )
+            # Check if using OpenRouter provider
+            if settings.AI_PROVIDER == "openrouter":
+                # Create JSON schema for OpenRouter
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "translation_response",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "index": {"type": "integer"},
+                                    "translated_lines": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    }
+                                },
+                                "required": ["index", "translated_lines"]
+                            }
+                        }
+                    }
+                }
+                
+                response_text = await _call_openrouter_api(
+                    model=model_to_use,
+                    system_prompt=system_prompt,
+                    user_prompt=request_prompt,
+                    api_key=settings.AI_API_KEY,
+                    response_format=response_format
+                )
+            elif settings.AI_PROVIDER == "google-gemini":
+                # Google Gemini provider
+                # Create base config parameters
+                config_params = {
+                    'response_mime_type': 'application/json',
+                    'response_schema': response_schema,
+                    'system_instruction': [
+                        types.Part.from_text(text=system_prompt),
+                    ]
+                }
+                
+                # Add thinking_config only for fast mode
+                if speed_mode == "fast":
+                    config_params['thinking_config'] = types.ThinkingConfig(thinking_budget=0)
+                
+                response = await genai_client.aio.models.generate_content(
+                    model=model_to_use,
+                    contents=[
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part.from_text(text=request_prompt),
+                            ],
+                        )
+                    ],
+                    config=types.GenerateContentConfig(**config_params)
+                )
+                response_text = response.text
 
-            # Parse response
+            # Parse response (same for both providers)
             try:                
                 # Validate JSON structure against TranslatedChunk model
                 try:
-                    validated_chunk = TranslatedChunk.model_validate_json(response.text)
+                    validated_chunk = TranslatedChunk.model_validate_json(response_text)
                 except Exception as e:
                     raise ChunkTranslationError(f"Response does not match expected schema: {str(e)}")
                 
@@ -181,7 +264,7 @@ async def _translate_single_chunk(
                     else:
                         raise ChunkTranslationError(f"Invalid block index {block_index} received in translation response for chunk {chunk_index}.")
                 
-                logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response.text}\n-----END-----\n")            
+                logging.debug(f"Parsed JSON response:\n---RESPONSE---\n{response_text}\n-----END-----\n")            
 
             except json.JSONDecodeError:
                 raise ChunkTranslationError(f"Failed to parse JSON response")

@@ -14,6 +14,50 @@ from core.config import Settings
 
 logger = logging.getLogger(__name__)
 
+async def _call_openrouter_text_api(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str
+) -> str:
+    """
+    Helper function to make async API calls to OpenRouter for text responses.
+    Returns the response text.
+    """
+    import aiohttp
+    
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": system_prompt}]
+        },
+        {
+            "role": "user", 
+            "content": [{"type": "text", "text": user_prompt}]
+        }
+    ]
+    
+    payload = {
+        "model": model,
+        "messages": messages
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise ContextDetectionError(f"OpenRouter API error: {response.status} - {error_text}")
+            
+            result = await response.json()
+            return result["choices"][0]["message"]["content"]
+
 def configurable_retry(f):
     @wraps(f)
     async def wrapper(*args, **kwargs):
@@ -69,27 +113,37 @@ async def detect_context(
         system_prompt = "You are a context detector. Your task is to analyze the subtitle content provided and determine the general context in one sentence. Only give me that context read to use. If it's a movie, just give a general theme. If a vlog/tutorial, the general topic the speaker(s) are talking about. The template is: This is a subtitle for a movie/vlog/tutorial/... for/of/about ..."
         request_prompt = f"{content}"
 
-        # Call GenAI using async API
         model_to_use = settings.FAST_MODEL if speed_mode == "fast" else settings.NORMAL_MODEL
-        response = await genai_client.aio.models.generate_content(
-            model=model_to_use,
-            contents=[
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=request_prompt),
-                    ],
-                )
-            ],
-            config=types.GenerateContentConfig(
-                response_mime_type='text/plain',
-                system_instruction=[
-                    types.Part.from_text(text=system_prompt),
-                ],
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
+        
+        # Check if using OpenRouter provider
+        if settings.AI_PROVIDER == "openrouter":
+            return await _call_openrouter_text_api(
+                model=model_to_use,
+                system_prompt=system_prompt,
+                user_prompt=request_prompt,
+                api_key=settings.AI_API_KEY
             )
-        )
-        return response.text
+        elif settings.AI_PROVIDER == "google-gemini":
+            # Google Gemini provider
+            response = await genai_client.aio.models.generate_content(
+                model=model_to_use,
+                contents=[
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=request_prompt),
+                        ],
+                    )
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type='text/plain',
+                    system_instruction=[
+                        types.Part.from_text(text=system_prompt),
+                    ],
+                    thinking_config=types.ThinkingConfig(thinking_budget=0) if speed_mode == "fast" else None
+                )
+            )
+            return response.text
 
     else:
         logger.error(f"Invalid speed_mode: {speed_mode}")

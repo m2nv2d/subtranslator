@@ -170,6 +170,45 @@ class GeminiProvider(AIProvider):
         )
 
 
+class OpenRouterProvider(AIProvider):
+    """OpenRouter AI provider implementation."""
+    
+    def __init__(self, settings: Settings):
+        super().__init__(settings)
+        # OpenRouter doesn't need a client initialization like Gemini
+        logger.info("OpenRouter provider initialized successfully")
+    
+    async def detect_context(
+        self,
+        sub: list[list[SubtitleBlock]],
+        speed_mode: str,
+    ) -> str:
+        """Detect context using existing OpenRouter context detector."""
+        from translator.context_detector import detect_context
+        return await detect_context(sub, speed_mode, None, self.settings)
+    
+    async def translate_all_chunks(
+        self,
+        context: str,
+        sub: list[list[SubtitleBlock]],
+        target_lang: str,
+        speed_mode: str,
+        semaphore: asyncio.Semaphore,
+    ) -> Tuple[int, int]:
+        """Translate all chunks using existing OpenRouter translator."""
+        from translator.chunk_translator import translate_all_chunks
+        
+        return await translate_all_chunks(
+            context=context,
+            sub=sub,
+            target_lang=target_lang,
+            speed_mode=speed_mode,
+            client=None,  # OpenRouter doesn't use a client
+            settings=self.settings,
+            semaphore=semaphore,
+        )
+
+
 def create_provider(settings: Settings) -> AIProvider:
     """
     Factory function to create the appropriate provider based on settings.
@@ -191,5 +230,7 @@ def create_provider(settings: Settings) -> AIProvider:
         provider = GeminiProvider(settings)
         provider.initialize()
         return provider
+    elif provider_type == "openrouter":
+        return OpenRouterProvider(settings)
     else:
         raise ValueError(f"Unsupported AI provider: {settings.AI_PROVIDER}")

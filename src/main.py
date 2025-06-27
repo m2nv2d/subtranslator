@@ -21,7 +21,11 @@ from core.config import get_settings
 # Import the router
 from routers.translate import router as translate_router
 
-# Load settings first to get the log level
+# Load settings - try with provider validation, fall back to mock if needed
+settings = None
+log_level = logging.INFO
+log_level_str = "INFO"
+
 try:
     settings = get_settings()
     log_level_str = settings.LOG_LEVEL.upper()
@@ -29,8 +33,23 @@ try:
 except Exception as e:
     # Fallback if settings loading fails during startup
     print(f"Warning: Failed to load settings for logging configuration: {e}. Defaulting to INFO level.")
-    log_level = logging.INFO
-    log_level_str = "INFO"
+    
+    # Try to create settings with mock provider as fallback
+    try:
+        import os
+        os.environ["AI_PROVIDER"] = "mock"
+        settings = get_settings()
+    except Exception as fallback_error:
+        print(f"Warning: Fallback to mock provider also failed: {fallback_error}")
+        # Create minimal settings object
+        from core.config import Settings
+        settings = Settings(
+            AI_PROVIDER="mock",
+            AI_API_KEY="",
+            FAST_MODEL="mock",
+            NORMAL_MODEL="mock",
+            _env_file=None
+        )
 
 # Configure logging
 logging.basicConfig(
