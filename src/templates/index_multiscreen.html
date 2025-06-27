@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT Translator</title>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Roboto+Mono%3Awght%40400%3B500%3B700" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <style>
+        .font-roboto-mono {
+            font-family: "Roboto Mono", monospace;
+        }
+        .screen {
+            display: none;
+        }
+        .screen.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-roboto-mono">
+    <div class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden">
+        <div class="layout-container flex h-full grow flex-col">
+            <header class="border-b border-slate-200 p-4">
+                <div class="mx-auto flex max-w-3xl items-center justify-center">
+                    <div class="flex items-center gap-2">
+                        <span class="material-icons text-2xl text-slate-600">translate</span>
+                        <h1 class="text-slate-800 text-lg font-medium">SRT Translator</h1>
+                    </div>
+                </div>
+            </header>
+            <main class="flex flex-1 justify-center p-4 py-8 md:py-12">
+                <div class="w-full max-w-lg space-y-6">
+                    
+                    <!-- Welcome Screen -->
+                    <div id="welcome-screen" class="screen active">
+                        <section class="border border-slate-200 rounded-lg bg-white p-6 shadow-sm">
+                            <h2 class="text-slate-700 text-xl font-medium text-center mb-6">Translate Your Subtitle File</h2>
+                            
+                            <form id="translate-form" enctype="multipart/form-data">
+                                <div class="border-2 border-dashed border-slate-300 rounded-md p-8 text-center hover:border-slate-400 transition-colors">
+                                    <span class="material-icons text-4xl text-slate-400 mb-3">upload_file</span>
+                                    <p class="text-slate-600 text-sm mb-1" id="file-name-display">Drag & Drop your .SRT file here</p>
+                                    <p class="text-slate-500 text-xs mb-4">Or click to select a file</p>
+                                    <label for="file-input" class="cursor-pointer">
+                                        <span class="bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors inline-block">Choose File</span>
+                                        <input type="file" id="file-input" name="file" accept=".srt" required class="hidden">
+                                    </label>
+                                </div>
+                                
+                                <div class="mt-6 space-y-5">
+                                    <div>
+                                        <label class="block text-slate-600 text-xs font-medium mb-1.5" for="target-lang">Target Language</label>
+                                        <select class="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 sm:text-sm text-slate-700 py-2.5 px-3" id="target-lang" name="target_lang" required>
+                                            {% for lang in languages %}
+                                                {% if loop.first %}
+                                                <option value="{{ lang }}" selected>{{ lang }}</option>
+                                                {% else %}
+                                                <option value="{{ lang }}">{{ lang }}</option>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="flex items-center text-slate-600 text-sm gap-2 cursor-pointer" for="speed-mode">
+                                            <span>Translation Speed:</span>
+                                            <select id="speed-mode" name="speed_mode" class="rounded-md border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 sm:text-sm text-slate-700 py-1.5 px-2">
+                                                <option value="normal">Normal</option>
+                                                <option value="fast" selected>Fast</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-6">
+                                    <button id="submit-button" type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-4 rounded-md text-base transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2">
+                                        Translate File
+                                    </button>
+                                </div>
+                            </form>
+                        </section>
+                    </div>
+
+                    <!-- Progress Screen -->
+                    <div id="progress-screen" class="screen">
+                        <section class="border border-slate-200 rounded-lg bg-white p-6 shadow-sm text-center">
+                            <div class="mb-6">
+                                <span class="material-icons text-4xl text-slate-600 mb-3 block animate-spin">sync</span>
+                                <h2 class="text-slate-700 text-xl font-medium mb-2">Translating</h2>
+                                <p class="text-slate-600 text-sm" id="translation-status">Preparing translation...</p>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <div class="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+                                    <div id="progress-bar" class="h-full bg-slate-600 rounded-full animate-pulse" style="width: 100%;"></div>
+                                </div>
+                            </div>
+                            
+                            <button id="cancel-button" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-6 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                                Cancel Translation
+                            </button>
+                        </section>
+                    </div>
+
+                    <!-- Result Screen -->
+                    <div id="result-screen" class="screen">
+                        <section class="border border-slate-200 rounded-lg bg-white p-6 shadow-sm text-center">
+                            <div class="mb-6">
+                                <span id="result-icon" class="material-icons text-4xl mb-3 block">check_circle</span>
+                                <h2 id="result-title" class="text-slate-700 text-xl font-medium mb-2">Translation Complete!</h2>
+                                <p id="result-message" class="text-slate-600 text-sm">Your translated file has been downloaded.</p>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <button id="download-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-md text-base transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 hidden">
+                                    Download File
+                                </button>
+                                <button id="new-translation-button" class="text-slate-600 hover:text-slate-800 text-sm underline decoration-slate-400 hover:decoration-slate-600 transition-colors cursor-pointer">
+                                    Translate another file
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+
+                </div>
+            </main>
+            <footer class="text-center p-4 text-xs text-slate-500 border-t border-slate-200">
+                <p>© 2025 SRT Translator</p>
+            </footer>
+        </div>
+    </div>
+    
+    <script src="/static/js/app_multiscreen.js"></script>
+</body>
+</html>
