@@ -19,6 +19,17 @@
         .screen.active {
             display: block;
         }
+        .animate-spin-reverse {
+            animation: spin-reverse 1s linear infinite;
+        }
+        @keyframes spin-reverse {
+            from {
+                transform: rotate(360deg);
+            }
+            to {
+                transform: rotate(0deg);
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-roboto-mono">
@@ -92,7 +103,7 @@
                     <div id="progress-screen" class="screen">
                         <section class="border border-slate-200 rounded-lg bg-white p-6 shadow-sm text-center">
                             <div class="mb-6">
-                                <span class="material-icons text-4xl text-slate-600 mb-3 block animate-spin">sync</span>
+                                <span class="material-icons text-4xl text-slate-600 mb-3 block animate-spin-reverse">sync</span>
                                 <h2 class="text-slate-700 text-xl font-medium mb-2">Translating</h2>
                                 <p class="text-slate-600 text-sm" id="translation-status">Preparing translation...</p>
                             </div>
@@ -115,14 +126,12 @@
                             <div class="mb-6">
                                 <span id="result-icon" class="material-icons text-4xl mb-3 block">check_circle</span>
                                 <h2 id="result-title" class="text-slate-700 text-xl font-medium mb-2">Translation Complete!</h2>
-                                <p id="result-message" class="text-slate-600 text-sm">Your translated file has been downloaded.</p>
+                                <p id="result-message" class="text-slate-600 text-sm">Your translated file has been downloaded automatically.</p>
                             </div>
                             
-                            <div class="space-y-4">
-                                <button id="download-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-md text-base transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 hidden">
-                                    Download File
-                                </button>
-                                <button id="new-translation-button" class="text-slate-600 hover:text-slate-800 text-sm underline decoration-slate-400 hover:decoration-slate-600 transition-colors cursor-pointer">
+                            <div>
+                                <button id="new-translation-button" class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 px-4 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 border border-slate-300">
+                                    <span class="material-icons text-lg">arrow_back</span>
                                     Translate another file
                                 </button>
                             </div>

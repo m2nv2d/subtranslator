@@ -21,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultIcon = document.getElementById('result-icon');
     const resultTitle = document.getElementById('result-title');
     const resultMessage = document.getElementById('result-message');
-    const downloadButton = document.getElementById('download-button');
     const newTranslationButton = document.getElementById('new-translation-button');
     
     // State variables
@@ -35,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeScreen, progressScreen, resultScreen, translateForm, fileInput, 
         targetLangSelect, speedModeSelect, submitButton, translationStatus, 
         progressBar, cancelButton, resultIcon, resultTitle, resultMessage, 
-        downloadButton, newTranslationButton
+        newTranslationButton
     ];
     
     if (requiredElements.some(el => !el)) {
@@ -115,13 +114,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check if translation is complete
             if (status.status === 'completed') {
                 clearInterval(statusCheckInterval);
-                showResult(true, 'Translation Complete!', 'Your translated file is ready for download.', status.download_url, status.filename);
+                showResult(true, 'Translation Complete!', 'Your translated file has been downloaded automatically.', status.download_url, status.filename);
             } else if (status.status === 'failed') {
                 clearInterval(statusCheckInterval);
                 showResult(false, 'Translation Failed', status.error || 'An error occurred during translation.');
             } else if (status.status === 'cancelled') {
                 clearInterval(statusCheckInterval);
-                showResult(false, 'Translation Cancelled', 'The translation was cancelled.');
+                showResult(false, 'Translation Cancelled', '');
             }
         } catch (error) {
             console.error('Status check error:', error);
@@ -137,14 +136,21 @@ document.addEventListener('DOMContentLoaded', () => {
             resultTitle.className = 'text-green-700 text-xl font-medium mb-2';
             downloadUrl = url;
             downloadFilename = filename;
+            
+            // Automatically download the file when it's ready
             if (url) {
-                downloadButton.classList.remove('hidden');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'translated.srt';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
             }
         } else {
             resultIcon.textContent = 'error';
             resultIcon.className = 'material-icons text-4xl text-red-600 mb-3 block';
             resultTitle.className = 'text-red-700 text-xl font-medium mb-2';
-            downloadButton.classList.add('hidden');
         }
         
         resultTitle.textContent = title;
@@ -218,25 +224,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (response.ok) {
                 clearInterval(statusCheckInterval);
-                showResult(false, 'Translation Cancelled', 'The translation was cancelled successfully.');
+                showResult(false, 'Translation Cancelled', '');
             }
         } catch (error) {
             console.error('Cancel error:', error);
         }
     });
 
-    // Download button handler
-    downloadButton.addEventListener('click', () => {
-        if (downloadUrl) {
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = downloadFilename || 'translated.srt';
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-    });
 
     // New translation button handler
     newTranslationButton.addEventListener('click', () => {
