@@ -27,8 +27,8 @@ fi
 
 # Start the FastAPI server in the background
 echo "Starting FastAPI server..."
-SSL_KEYFILE=$HOME/ssl/key.pem
-SSL_CERTFILE=$HOME/ssl/cert.pem
+# SSL_KEYFILE=$HOME/ssl/key.pem
+# SSL_CERTFILE=$HOME/ssl/cert.pem
 
 if [ -n "$LOG_CONFIG" ]; then
     uv run uvicorn \
