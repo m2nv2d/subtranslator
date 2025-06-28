@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5100:5100"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
