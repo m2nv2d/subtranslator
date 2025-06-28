@@ -2,10 +2,15 @@
 
 Subtranslator is a FastAPI app built to translate subtitle files using LLMs. It provides a web interface for uploading subtitle files and translating them to different languages using various AI models.
 
+## Requirements
+
+- uv
+- Docker (optional)
+- Docker Compose (optional)
 
 ## Installation
 
-1. Install dependencies with uv:
+1. Install dependencies with uv (if not using Docker):
    ```bash
    uv sync
    ```
@@ -14,6 +19,8 @@ Subtranslator is a FastAPI app built to translate subtitle files using LLMs. It 
    ```bash
    cp .env.example .env
    ```
+
+3. Edit the environment file. Choose the provider and set your API keys from one of the supported LLM providers: [OpenRouter](https://openrouter.ai/docs/api-reference/authentication), [Google Gemini](https://ai.google.dev/gemini-api/docs/api-key).
 
 ## Development Server
 
@@ -37,7 +44,7 @@ docker-compose up --build
 
 ## Production Server
 
-For production deployment:
+Use gunicorn directly with uv:
 ```bash
 # Using Makefile
 make prod
@@ -46,9 +53,7 @@ make prod
 uv run --env-file=.env gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
 ```
 
-## Docker
-
-Build and run with Docker:
+Or build and run with Docker:
 
 ```bash
 # Using Makefile
