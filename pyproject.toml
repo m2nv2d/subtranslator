@@ -1,7 +1,7 @@
 [project]
-name = "subtranslator-ng-roo"
-version = "0.1.0"
-description = "Add your description here"
+name = "subtranslator"
+version = "0.2.0"
+description = "A FastAPI app built to translate subtitle files using LLMs."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
