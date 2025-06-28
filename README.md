@@ -19,14 +19,22 @@ Subtranslator is a FastAPI app built to translate subtitle files using LLMs. It 
 
 Run the FastAPI development server:
 ```bash
-uv run uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
+# Using Makefile
+make dev
+
+# Or directly
+uv run --env-file .env uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
 ```
 
 ## Production Server
 
 For production deployment:
 ```bash
-uv run gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
+# Using Makefile
+make prod
+
+# Or directly
+uv run --env-file .env gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
 ```
 
 ## Docker
@@ -34,10 +42,12 @@ uv run gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdi
 Build and run with Docker:
 
 ```bash
-# Build the image
-docker build -t subtranslator .
+# Using Makefile
+make docker-build
+make docker-run
 
-# Run the container
+# Or directly
+docker build -t subtranslator .
 docker run -d -p 5100:5100 --env-file .env subtranslator
 ```
 

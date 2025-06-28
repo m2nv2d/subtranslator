@@ -2,11 +2,11 @@
 
 # Development server with hot reload
 dev:
-	uv run uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
+	uv run --env-file=.env uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
 
 # Production server with gunicorn + uvicorn workers
 prod:
-	uv run gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
+	uv run --env-file=.env gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
 
 # Run tests
 test:
