@@ -1,4 +1,4 @@
-.PHONY: dev prod test install clean
+.PHONY: dev prod test install clean docker-build docker-run
 
 # Development server with hot reload
 dev:
@@ -20,3 +20,11 @@ install:
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+
+# Build Docker image
+docker-build:
+	docker build -t subtranslator .
+
+# Run Docker container
+docker-run:
+	docker run -d -p 5100:5100 --env-file .env subtranslator

@@ -28,3 +28,28 @@ For production deployment:
 ```bash
 uv run gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
 ```
+
+## Docker
+
+Build and run with Docker:
+
+```bash
+# Build the image
+docker build -t subtranslator .
+
+# Run the container
+docker run -d -p 5100:5100 --env-file .env subtranslator
+```
+
+Or use docker-compose:
+
+```yaml
+version: '3.8'
+services:
+  subtranslator:
+    build: .
+    ports:
+      - "5100:5100"
+    env_file:
+      - .env
+```
