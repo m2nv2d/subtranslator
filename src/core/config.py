@@ -1,11 +1,9 @@
-import os
-import logging
 import json
-from pathlib import Path
+import logging
 from typing import Annotated
 
 from pydantic import model_validator, Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -20,9 +18,9 @@ class Settings(BaseSettings):
     NORMAL_MODEL: str = Field(default="gemini-2.5-pro-preview-03-25", description="Model name for normal translations")
     
     # Optional settings with defaults
-    TARGET_LANGUAGES: Annotated[tuple[str, ...], NoDecode] = Field(
+    TARGET_LANGUAGES: tuple[str, ...] = Field(
         default=("Vietnamese", "French"),
-        description="List of target languages available for translation"
+        description="List of target languages available for translation. Use JSON array format: '[\"Vietnamese\", \"French\"]'"
     )
     CHUNK_MAX_BLOCKS: int = Field(
         default=100,
@@ -69,15 +67,27 @@ class Settings(BaseSettings):
     @classmethod
     def validate_target_languages(cls, values: dict) -> dict:
         """
-        Validate TARGET_LANGUAGES from .env file.
-        This catches the raw string value before it's converted to a list.
+        Parse TARGET_LANGUAGES from environment variable.
+        Expects JSON array format: '["Vietnamese", "French", "Spanish"]'
         """
         target_langs_key = 'TARGET_LANGUAGES'
         
         if target_langs_key in values and isinstance(values[target_langs_key], str):
-            # Set value based on the .env file string
-            langs = tuple(lang.strip() for lang in values[target_langs_key].split(',') if lang.strip())
-            values[target_langs_key] = langs if langs else ("Vietnamese", "French")
+            raw_value = values[target_langs_key].strip()
+            
+            if not raw_value:
+                values[target_langs_key] = ("Vietnamese", "French")
+                return values
+            
+            try:
+                parsed_list = json.loads(raw_value)
+                if isinstance(parsed_list, list) and all(isinstance(lang, str) for lang in parsed_list):
+                    langs = tuple(lang.strip() for lang in parsed_list if lang.strip())
+                    values[target_langs_key] = langs if langs else ("Vietnamese", "French")
+                else:
+                    raise ValueError("TARGET_LANGUAGES must be a JSON array of strings")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"TARGET_LANGUAGES must be valid JSON array format: {e}")
         
         return values
     
