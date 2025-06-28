@@ -5,7 +5,7 @@ import asyncio
 
 from core.config import get_settings, Settings
 from core.stats import AppStatsStore
-from core.rate_limiter import RateLimiter, get_rate_limiter
+from core.rate_limiter import RateLimiter, get_rate_limiter, check_global_request_limit
 from core.providers import AIProvider, create_provider
 from fastapi import Depends, HTTPException
 from pydantic import ValidationError as PydanticValidationError

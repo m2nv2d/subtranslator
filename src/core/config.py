@@ -54,6 +54,11 @@ class Settings(BaseSettings):
         default=True,
         description="Whether to show translation speed selector in the UI"
     )
+    MAX_TOTAL_REQUESTS: int = Field(
+        default=1000,
+        description="Maximum total number of requests/uploads the application can process since startup (0 = unlimited)",
+        ge=0
+    )
     
     # Configure to read from environment variables only
     model_config = SettingsConfigDict(

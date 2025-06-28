@@ -31,7 +31,7 @@ from core.config import Settings
 from core.dependencies import get_application_settings, get_ai_provider, get_translation_semaphore, get_stats_store, get_application_rate_limiter
 from core.providers import AIProvider
 from core.stats import AppStatsStore, TotalStats, FileStats
-from core.rate_limiter import check_session_file_limit
+from core.rate_limiter import check_session_file_limit, check_global_request_limit
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,7 @@ async def translate_srt(
     semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
     stats_store: Annotated[AppStatsStore, Depends(get_stats_store)],
     _: None = Depends(check_session_file_limit),
+    __: None = Depends(check_global_request_limit),
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")
@@ -415,6 +416,7 @@ async def start_async_translation(
     semaphore: Annotated[asyncio.Semaphore, Depends(get_translation_semaphore)],
     stats_store: Annotated[AppStatsStore, Depends(get_stats_store)],
     _: None = Depends(check_session_file_limit),
+    __: None = Depends(check_global_request_limit),
     file: UploadFile = File(...),
     target_lang: str = Form(...),
     speed_mode: str = Form("normal")

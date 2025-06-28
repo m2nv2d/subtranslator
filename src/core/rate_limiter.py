@@ -8,6 +8,9 @@ logger = logging.getLogger(__name__)
 # Global rate limiter instance
 _rate_limiter = None
 
+# Global request counter
+_global_request_count = 0
+
 
 class RateLimiter:
     """Session-based rate limiter for file uploads."""
@@ -82,3 +85,46 @@ def check_session_file_limit(
     
     rate_limiter = get_rate_limiter(settings)
     rate_limiter.check_limit(session_id)
+
+
+def check_global_request_limit(
+    settings: Settings = Depends(get_application_settings)
+) -> None:
+    """
+    FastAPI dependency to check global request limit across all users.
+    
+    Args:
+        settings: The application settings
+        
+    Raises:
+        HTTPException: If global request limit exceeded
+    """
+    global _global_request_count
+    
+    # Check if limiting is enabled (0 means unlimited)
+    if settings.MAX_TOTAL_REQUESTS == 0:
+        return
+    
+    # Check if limit exceeded
+    if _global_request_count >= settings.MAX_TOTAL_REQUESTS:
+        logger.warning(f"Global request limit exceeded: {_global_request_count}/{settings.MAX_TOTAL_REQUESTS}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Application request limit reached. Maximum {settings.MAX_TOTAL_REQUESTS} requests allowed since startup."
+        )
+    
+    # Increment global counter
+    _global_request_count += 1
+    logger.debug(f"Global request count: {_global_request_count}/{settings.MAX_TOTAL_REQUESTS}")
+
+
+def get_global_request_count() -> int:
+    """Get current global request count."""
+    return _global_request_count
+
+
+def reset_global_request_count() -> None:
+    """Reset global request count (for testing purposes)."""
+    global _global_request_count
+    _global_request_count = 0
+    logger.info("Global request count reset to 0")
