@@ -1,6 +1,8 @@
 services:
   app:
     build: .
+    image: subtranslator:prod
+    container_name: subtranslator-prod
     ports:
       - "5100:5100"
     env_file:
