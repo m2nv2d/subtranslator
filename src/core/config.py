@@ -155,32 +155,29 @@ def get_settings() -> Settings:
     """
     Load settings from environment variables.
     Command-line arguments override environment variables.
+    
+    Raises:
+        Exception: If configuration validation fails or required settings are missing.
     """
-    try:
-        # Parse command-line arguments for overrides
-        import sys
-        import os
-        cli_overrides = {}
-        args = sys.argv[1:]  # Skip script name
-        
-        i = 0
-        while i < len(args):
-            arg = args[i]
-            if arg.startswith('--') and '=' in arg:
-                # Handle --key=value format
-                key, value = arg[2:].split('=', 1)
-                os.environ[key.upper()] = value
-            elif arg.startswith('--') and i + 1 < len(args) and not args[i + 1].startswith('--'):
-                # Handle --key value format
-                key = arg[2:].upper()
-                value = args[i + 1]
-                os.environ[key] = value
-                i += 1  # Skip the value argument
-            i += 1
-        
-        # Initialize settings from environment variables
-        return Settings()
-        
-    except Exception as e:
-        logging.error(f"Failed to load settings: {e}")
-        raise 
+    # Parse command-line arguments for overrides
+    import sys
+    import os
+    args = sys.argv[1:]  # Skip script name
+    
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith('--') and '=' in arg:
+            # Handle --key=value format
+            key, value = arg[2:].split('=', 1)
+            os.environ[key.upper()] = value
+        elif arg.startswith('--') and i + 1 < len(args) and not args[i + 1].startswith('--'):
+            # Handle --key value format
+            key = arg[2:].upper()
+            value = args[i + 1]
+            os.environ[key] = value
+            i += 1  # Skip the value argument
+        i += 1
+    
+    # Initialize settings from environment variables - let exceptions propagate
+    return Settings() 
