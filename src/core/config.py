@@ -57,7 +57,7 @@ class Settings(BaseSettings):
         description="Whether to show translation speed selector in the UI"
     )
     
-    # Configure .env file support - exclude environment variables
+    # Configure .env file support and environment variables
     model_config = SettingsConfigDict(
         frozen=True,
         env_file=".env",
@@ -65,8 +65,8 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
         env_ignore_empty=True,
-        # This prevents reading from environment variables
-        env_prefix="NONEXISTENT_PREFIX_"
+        # Explicitly allow reading from environment variables
+        env_nested_delimiter=None
     )
     
     @model_validator(mode="before")
@@ -119,27 +119,59 @@ class Settings(BaseSettings):
         """Load provider-specific configuration from .env values."""
         provider = values.get("AI_PROVIDER", "google-gemini").lower()
         
+        import os
+        
         if provider == "google-gemini":
             # Try provider-specific keys first, fall back to generic ones
             if "GEMINI_API_KEY" in values:
                 values["AI_API_KEY"] = values["GEMINI_API_KEY"]
+            else:
+                # Read from environment if not in values dict
+                gemini_key = os.getenv("GEMINI_API_KEY")
+                if gemini_key:
+                    values["AI_API_KEY"] = gemini_key
+            
             if "GEMINI_FAST_MODEL" in values:
                 values["FAST_MODEL"] = values["GEMINI_FAST_MODEL"]
+            else:
+                gemini_fast = os.getenv("GEMINI_FAST_MODEL")
+                if gemini_fast:
+                    values["FAST_MODEL"] = gemini_fast
+            
             if "GEMINI_NORMAL_MODEL" in values:
                 values["NORMAL_MODEL"] = values["GEMINI_NORMAL_MODEL"]
+            else:
+                gemini_normal = os.getenv("GEMINI_NORMAL_MODEL")
+                if gemini_normal:
+                    values["NORMAL_MODEL"] = gemini_normal
                 
         elif provider == "openrouter":
             # Try provider-specific keys first, fall back to generic ones
             if "OPENROUTER_API_KEY" in values:
                 values["AI_API_KEY"] = values["OPENROUTER_API_KEY"]
+            else:
+                # Read from environment if not in values dict
+                openrouter_key = os.getenv("OPENROUTER_API_KEY")
+                if openrouter_key:
+                    values["AI_API_KEY"] = openrouter_key
+            
             if "OPENROUTER_FAST_MODEL" in values:
                 values["FAST_MODEL"] = values["OPENROUTER_FAST_MODEL"]
-            elif "FAST_MODEL" not in values or not values["FAST_MODEL"]:
-                values["FAST_MODEL"] = "google/gemini-2.5-flash"
+            else:
+                openrouter_fast = os.getenv("OPENROUTER_FAST_MODEL")
+                if openrouter_fast:
+                    values["FAST_MODEL"] = openrouter_fast
+                elif "FAST_MODEL" not in values or not values["FAST_MODEL"]:
+                    values["FAST_MODEL"] = "google/gemini-2.5-flash"
+            
             if "OPENROUTER_NORMAL_MODEL" in values:
                 values["NORMAL_MODEL"] = values["OPENROUTER_NORMAL_MODEL"]
-            elif "NORMAL_MODEL" not in values or not values["NORMAL_MODEL"]:
-                values["NORMAL_MODEL"] = "google/gemini-2.5-pro"
+            else:
+                openrouter_normal = os.getenv("OPENROUTER_NORMAL_MODEL")
+                if openrouter_normal:
+                    values["NORMAL_MODEL"] = openrouter_normal
+                elif "NORMAL_MODEL" not in values or not values["NORMAL_MODEL"]:
+                    values["NORMAL_MODEL"] = "google/gemini-2.5-pro"
         
         return values
     
@@ -165,8 +197,8 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     """
-    Load settings from .env file and command-line arguments.
-    Environment variables are ignored to prevent conflicts.
+    Load settings from .env file and environment variables.
+    Command-line arguments override environment variables.
     """
     try:
         # Find project root to locate .env file
@@ -193,8 +225,9 @@ def get_settings() -> Settings:
                 i += 1  # Skip the value argument
             i += 1
         
-        # Initialize settings with .env file
-        settings = Settings(_env_file=dotenv_path if dotenv_path.is_file() else None)
+        # Initialize settings - always try to read from environment variables
+        # If .env file exists, it will be read via model_config
+        settings = Settings()
         
         # Apply command-line overrides if any
         if cli_overrides:
