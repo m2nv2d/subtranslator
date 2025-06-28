@@ -23,7 +23,16 @@ Run the FastAPI development server:
 make dev
 
 # Or directly
-uv run --env-file .env uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
+uv run --env-file=.env uvicorn --app-dir ./src --reload --host 0.0.0.0 --port 5100 main:app
+```
+
+Or use docker-compose:
+```bash
+# Using Makefile
+make docker-dev
+
+# Or directly
+docker-compose up --build
 ```
 
 ## Production Server
@@ -34,7 +43,7 @@ For production deployment:
 make prod
 
 # Or directly
-uv run --env-file .env gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
+uv run --env-file=.env gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5100 --chdir ./src main:app
 ```
 
 ## Docker
