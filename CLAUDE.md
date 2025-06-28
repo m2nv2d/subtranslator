@@ -1,15 +1,12 @@
-# Python
-## Version
+## Python
+### Version
 - Use Python 3.11 and newer, adopting their new features such as pattern matching improvements, exception groups, the "tomllib" module for parsing TOML files, the new "self" type annotation, "StrEnum" for enumerations, "typing.Required" and "typing.NotRequired" in TypedDicts, and task groups from the updated "asyncio" for concurrent background tasks.
 
-## Importing
-- Add src/ folder to sys.path uvicorn, so that when importing internal modules we can use absolute imports (e.g., import subtranslator), not relative imports (e.g., from . import console).
-
-## Typing
+### Typing
 
 Use built-in generics like list[str] and dict[str, int] for type annotations instead of List[str] or Dict[str, int].
 
-## LLM Libraries
+### LLM Libraries
 - Forget everything you know about Google Gemini's SDK. That was an older version. Always use the doc and examples I provide below.
 - The python package for Google Gemini AI is `google-genai`, not `google-generativeai`. Here is an example of init a client and make sync/async requests:
 
@@ -35,20 +32,26 @@ print(async_response.text)
 ```
 
 ### Package Management
-- For Python tooling, use uv instead of pip. In particular:
-Use `uv add` instead of `pip install`
-Use `uv run some_script.py` instead of `python some_script.py`
+- For Python tooling, use uv instead of pip, venv, etc. Prefer to use pyproject.toml to define configuration. In particular:
+    + Use `uv venv` to create a virtual environment
+    + Use `uv init` to initialize a project and create a pyproject.toml file
+    + Use `uv pip` instead of `pip` to manage packages
+    + Use `uv pip install -e .` to install the project in editable mode
+    + Use `uv add` to install and add dependencies to the pyproject.toml file
+    + Use `uv remove` to remove dependencies from the pyproject.toml file
+    + Use `uv pip compile pyproject.toml -o requirements.txt` to lock dependencies declared in a pyproject.toml and compile them into a requirements.txt file
+    + Use `uv lock` to create a lockfile for the project's dependencies
+    + Use `uv sync` to sync from the lockfile (make sure that all project dependencies are installed and up-to-date with the lockfile)
+    + Use `uv pip install -r pyproject.toml` to install packages from the pyproject.toml file
+    + Use `uv pip install -r requirements.txt` to install packages from the requirements.txt file
 
-- Prefer to use pyproject.toml to define configuration for a Python project
-Use `uv pip install -r pyproject.toml` to install from it
-Use `uv pip sync pyproject.toml` to sync from it (make sure that all project dependencies are installed and up-to-date with the lockfile)
+- Use `uv run` to run scripts and commands
+    + Use `uv run <commands>` (such as `uv run pytest` to run tests)
+    + Use `uv run <script>` (such as `uv run some_script.py` to run scripts)
+    + Use `uv run python` instead of `python` to run python commands. Such as `uv run python -c ...` to execute a python code snippet.
 
-- How to work with requirements.txt
-Use `uv pip install -r requirements.txt` to install from it
-Use `uv pip sync requirements.txt` to sync from it
-
-## Server
-- Use `uvicorn main:app` with `--app-dir` set to `./src`, along other regular options, such as `uv run uvicorn --app-dir ./src --reload --host 0.0.0.0 --port $PORT main:app`
+## Scripts
+- Use Makefile to manage and run scripts
 
 ## Tests
 - Put automated tests in tests/automated/ and manual test scripts in tests/manual/. They have different purposes:
