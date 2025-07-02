@@ -6,7 +6,7 @@ build/
 dist/
 wheels/
 *.egg-info
-.venv
+.venv/
 uv.lock
 
 # JS-TS generated files
@@ -20,7 +20,7 @@ tests/samples
 *.srt
 
 # Dev container settings
-.devcontainer
+.devcontainer/
 
 # Local Claude Code settings
 settings.local.json
