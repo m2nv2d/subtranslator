@@ -61,7 +61,7 @@
     "NVM_DIR": "/usr/local/share/nvm",
     "SSH_AUTH_SOCK": "${localEnv:SSH_AUTH_SOCK}"
   },
-  "forwardPorts": [3000],
+  "forwardPorts": [3000, 8888],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postCreateCommand": "zsh -c 'source ~/.zshrc && pnpm setup && source ~/.zshrc && pnpm install -g @anthropic-ai/claude-code @google/gemini-cli && curl -LsSf https://astral.sh/uv/install.sh | sh'",
