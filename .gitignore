@@ -19,5 +19,8 @@ node_modules/
 tests/samples
 *.srt
 
+# Dev container settings
+.devcontainer
+
 # Local Claude Code settings
 settings.local.json
